@@ -90,6 +90,17 @@ export const Editor: React.FC<EditorProps> = ({
     };
   }, [editor]);
 
+  // Seed welcome text if empty
+  useEffect(() => {
+    if (editor && editor.isEmpty && title === 'Welcome to VaultDocs') {
+      editor.commands.setContent(`
+        <h1>Welcome to VaultDocs!</h1>
+        <p>This is your serverless, peer-to-peer, zero-knowledge collaborative workspace.</p>
+        <p>Everything you write here is stored locally on your device via IndexedDB (offline-first) and syncs directly with teammates using WebRTC. All sync traffic is end-to-end encrypted before it leaves your browser using AES-256-GCM. The signaling server never sees your plaintext.</p>
+      `);
+    }
+  }, [editor, title]);
+
   if (!editor) return null;
 
   return (

@@ -105,6 +105,12 @@ function App() {
   // 3. Load teams & active team on mount
   useEffect(() => {
     const loadTeams = async () => {
+      // Clear legacy corrupted documents once to prevent runtime crashes
+      if (!localStorage.getItem('vaultdocs_db_clean_v2')) {
+        await db.documents.clear();
+        localStorage.setItem('vaultdocs_db_clean_v2', 'true');
+      }
+
       const allTeams = await listLocalTeams();
       setTeams(allTeams);
       
@@ -228,10 +234,6 @@ function App() {
     const tempYDoc = new Y.Doc();
     const ytitle = tempYDoc.getText('title');
     ytitle.insert(0, initialTitle);
-    const yText = tempYDoc.getText('default');
-    if (initialTitle === 'Welcome to VaultDocs') {
-      yText.insert(0, 'Welcome to VaultDocs! This is your serverless, peer-to-peer, zero-knowledge collaborative workspace.\n\nEverything you write here is stored locally on your device via IndexedDB (offline-first) and syncs directly with teammates using WebRTC. All sync traffic is end-to-end encrypted before it leaves your browser using AES-256-GCM. The signaling server never sees your plaintext.');
-    }
     
     const state = Y.encodeStateAsUpdate(tempYDoc);
     const encrypted = encryptUpdate(state, activeTeam.teamKey);
