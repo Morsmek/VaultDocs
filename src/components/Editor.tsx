@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import * as Y from 'yjs';
 import { 
   Bold, 
@@ -68,7 +68,7 @@ export const Editor: React.FC<EditorProps> = ({
       Collaboration.configure({
         document: doc,
       }),
-      CollaborationCursor.configure({
+      CollaborationCaret.configure({
         provider: provider,
         user: provider.awareness.getLocalState()?.user || {
           name: username,

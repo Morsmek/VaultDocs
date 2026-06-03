@@ -12,7 +12,7 @@
   "dependencies": {
     "@noble/ciphers": "^2.2.0",
     "@tiptap/extension-collaboration": "^3.24.0",
-    "@tiptap/extension-collaboration-cursor": "^2.26.2",
+    "@tiptap/extension-collaboration-caret": "^3.24.0",
     "@tiptap/react": "^3.24.0",
     "@tiptap/starter-kit": "^3.24.0",
     "@tiptap/y-tiptap": "^3.0.4",
