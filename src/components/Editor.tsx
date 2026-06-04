@@ -11,7 +11,8 @@ import {
   Heading1, 
   Heading2, 
   Quote, 
-  Terminal 
+  Terminal,
+  Lock
 } from 'lucide-react';
 
 interface EditorProps {
@@ -19,13 +20,17 @@ interface EditorProps {
   provider: any; // EncryptedWebrtcProvider
   username: string;
   onTitleChange: (newTitle: string) => void;
+  isLocked?: boolean;
+  lockedBy?: string;
 }
 
 export const Editor: React.FC<EditorProps> = ({
   doc,
   provider,
   username,
-  onTitleChange
+  onTitleChange,
+  isLocked = false,
+  lockedBy
 }) => {
   const [title, setTitle] = useState('');
 
@@ -80,7 +85,8 @@ export const Editor: React.FC<EditorProps> = ({
       attributes: {
         placeholder: 'Start writing your zero-knowledge document...',
       }
-    }
+    },
+    editable: !isLocked
   }, [doc, provider]);
 
   // Cleanup editor on unmount
@@ -89,6 +95,13 @@ export const Editor: React.FC<EditorProps> = ({
       editor?.destroy();
     };
   }, [editor]);
+
+  // Sync editor editable state when lock changes
+  useEffect(() => {
+    if (editor) {
+      editor.setEditable(!isLocked);
+    }
+  }, [editor, isLocked]);
 
   // Seed welcome text if empty
   useEffect(() => {
@@ -105,6 +118,13 @@ export const Editor: React.FC<EditorProps> = ({
 
   return (
     <div className="editor-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Lock banner */}
+      {isLocked && (
+        <div className="lock-banner">
+          <Lock size={14} />
+          This document is locked{lockedBy ? ` by ${lockedBy}` : ''}. Editing is disabled.
+        </div>
+      )}
       {/* Sleek Fixed Format Toolbar */}
       <div className="editor-container" style={{ maxWidth: '780px', width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
@@ -180,6 +200,8 @@ export const Editor: React.FC<EditorProps> = ({
           onChange={handleTitleChange}
           placeholder="Untitled Document"
           className="editor-title-input"
+          readOnly={isLocked}
+          style={isLocked ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
         />
 
         <EditorContent editor={editor} />

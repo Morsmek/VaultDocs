@@ -1,23 +1,27 @@
 import React, { useState } from 'react';
-import { FileText, Plus, Trash2, Users, LogOut, Folder, LayoutTemplate } from 'lucide-react';
-import { SearchBar } from './SearchBar';
+import { Plus, Users, LogOut, FolderPlus, LayoutTemplate, Tag, X } from 'lucide-react';
 import type { LocalDocument, LocalFolder } from '../db/db';
+import { SearchBar } from './SearchBar';
+import { FolderTree } from './FolderTree';
 
 interface SidebarProps {
   documents: LocalDocument[];
-  folders: LocalFolder[];
   currentDocId: string | null;
+  folders: LocalFolder[];
+  searchQuery: string;
+  onSearch: (q: string) => void;
   onSelectDoc: (id: string) => void;
   onCreateDoc: () => void;
   onDeleteDoc: (id: string) => void;
   onCreateFolder: (name: string) => void;
-  onSelectFolder: (folderId: string | null) => void;
-  onTogglePin: (docId: string, pinned: boolean) => void;
+  onDeleteFolder: (id: string) => void;
+  onTogglePin: (docId: string) => void;
+  onToggleLock: (docId: string) => void;
+  onMoveDoc: (docId: string, folderId: string | undefined) => void;
+  onOpenTemplates: () => void;
   onAddTag: (docId: string, tag: string) => void;
   onRemoveTag: (docId: string, tag: string) => void;
-  onOpenTemplates: () => void;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
+  currentDocTags: string[];
   teamName: string;
   peers: { id: string; name: string; color: string; online: boolean }[];
   onLeaveTeam: () => void;
@@ -26,233 +30,157 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   documents,
   currentDocId,
+  folders,
+  searchQuery,
+  onSearch,
   onSelectDoc,
   onCreateDoc,
   onDeleteDoc,
   onCreateFolder,
+  onDeleteFolder,
   onTogglePin,
+  onToggleLock,
+  onMoveDoc,
+  onOpenTemplates,
   onAddTag,
   onRemoveTag,
-  onOpenTemplates,
-  searchQuery,
-  onSearchChange,
+  currentDocTags,
   teamName,
   peers,
   onLeaveTeam
 }) => {
-  const [newFolderMode, setNewFolderMode] = useState(false);
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
-  const [newTagMode, setNewTagMode] = useState<string | null>(null);
-  const [newTag, setNewTag] = useState('');
+  const [tagInput, setTagInput] = useState('');
 
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const handleCreateFolder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+    onCreateFolder(newFolderName.trim());
+    setNewFolderName('');
+    setShowNewFolderInput(false);
   };
 
-  const handleCreateFolder = () => {
-    if (newFolderName.trim()) {
-      onCreateFolder(newFolderName.trim());
-      setNewFolderName('');
-      setNewFolderMode(false);
+  const handleAddTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && tagInput.trim() && currentDocId) {
+      onAddTag(currentDocId, tagInput.trim().toLowerCase());
+      setTagInput('');
     }
   };
-
-  const handleAddTag = (docId: string) => {
-    if (newTag.trim()) {
-      onAddTag(docId, newTag.trim());
-      setNewTag('');
-      setNewTagMode(null);
-    }
-  };
-
-  const pinnedDocs = documents.filter(d => d.isPinned);
-  const regularDocs = documents.filter(d => !d.isPinned);
 
   return (
     <aside className="sidebar">
+      {/* Logo header */}
       <div className="sidebar-header">
         <img src="/logo.png" alt="VaultDocs" className="logo-image" />
         <div style={{ flex: 1 }} />
-        <button 
-          onClick={onLeaveTeam} 
-          className="btn-delete-doc" 
-          title="Leave current team" 
+        <button
+          onClick={onLeaveTeam}
+          className="btn-delete-doc"
+          title="Leave current team"
           style={{ opacity: 1 }}
         >
           <LogOut size={16} />
         </button>
       </div>
 
-      {/* Search Bar */}
-      <div className="sidebar-search-container">
-        <SearchBar value={searchQuery} onChange={onSearchChange} />
-      </div>
-
+      {/* Action buttons */}
       <div className="sidebar-action-container">
         <button onClick={onCreateDoc} className="btn-new-doc">
-          <Plus size={16} />
+          <Plus size={15} />
           New Document
         </button>
+        <div className="sidebar-secondary-actions">
+          <button
+            className="btn-sidebar-icon"
+            onClick={() => setShowNewFolderInput(v => !v)}
+            title="New folder"
+          >
+            <FolderPlus size={15} />
+          </button>
+          <button
+            className="btn-sidebar-icon"
+            onClick={onOpenTemplates}
+            title="Templates"
+          >
+            <LayoutTemplate size={15} />
+          </button>
+        </div>
       </div>
 
-      {/* Sidebar Secondary Actions */}
-      <div className="sidebar-secondary-actions">
-        <button
-          onClick={() => setNewFolderMode(!newFolderMode)}
-          className="btn-sidebar-icon"
-          title="Create folder"
-        >
-          <Folder size={14} />
-        </button>
-        <button
-          onClick={onOpenTemplates}
-          className="btn-sidebar-icon"
-          title="Use template"
-        >
-          <LayoutTemplate size={14} />
-        </button>
-      </div>
-
-      {/* New Folder Form */}
-      {newFolderMode && (
-        <div className="new-folder-form">
+      {/* New folder input */}
+      {showNewFolderInput && (
+        <form className="new-folder-form" onSubmit={handleCreateFolder}>
           <input
+            autoFocus
             type="text"
+            className="new-folder-input"
             placeholder="Folder name..."
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
-            className="new-folder-input"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCreateFolder();
-              if (e.key === 'Escape') setNewFolderMode(false);
-            }}
+            onKeyDown={(e) => e.key === 'Escape' && setShowNewFolderInput(false)}
           />
-          <button onClick={handleCreateFolder} className="btn-sidebar-icon">
-            <Plus size={14} />
+          <button type="submit" className="btn-sidebar-icon" title="Create folder">
+            <Plus size={13} />
           </button>
-        </div>
+        </form>
       )}
 
-      {/* Folder Tree - commented out pending prop alignment */}
-
-      {/* Pinned Documents Section */}
-      {pinnedDocs.length > 0 && (
-        <div className="doc-list-section">
-          <h3 className="doc-list-title" style={{ color: 'var(--accent-color)' }}>Pinned</h3>
-          <ul className="doc-list">
-            {pinnedDocs.map((doc) => (
-              <li
-                key={doc.id}
-                className={`doc-item ${currentDocId === doc.id ? 'active' : ''}`}
-                onClick={() => onSelectDoc(doc.id)}
-              >
-                <div className="doc-item-title-wrapper">
-                  <FileText size={15} style={{ flexShrink: 0 }} />
-                  <span className="doc-item-name">{doc.title || 'Untitled'}</span>
-                  <span className="doc-item-info">{formatTime(doc.updatedAt)}</span>
-                </div>
-                <button
-                  className="btn-delete-doc"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onTogglePin(doc.id, false);
-                  }}
-                  title="Unpin"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Documents Section */}
-      <div className="doc-list-section">
-        <h3 className="doc-list-title">{teamName || 'Local Workspace'}</h3>
-        <ul className="doc-list">
-          {regularDocs.map((doc) => (
-            <div key={doc.id}>
-              <li
-                className={`doc-item ${currentDocId === doc.id ? 'active' : ''}`}
-                onClick={() => onSelectDoc(doc.id)}
-              >
-                <div className="doc-item-title-wrapper">
-                  <FileText size={15} style={{ flexShrink: 0 }} />
-                  <span className="doc-item-name">{doc.title || 'Untitled'}</span>
-                  {doc.isLocked && <span style={{ color: 'var(--error-color)', fontSize: '10px' }}>🔒</span>}
-                  <span className="doc-item-info">{formatTime(doc.updatedAt)}</span>
-                </div>
-                <button
-                  className="btn-delete-doc"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm('Delete this document?')) {
-                      onDeleteDoc(doc.id);
-                    }
-                  }}
-                  title="Delete"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </li>
-              {/* Tags for this document */}
-              {(doc.tags && doc.tags.length > 0 || newTagMode === doc.id) && (
-                <div className="tag-list">
-                  {doc.tags?.map(tag => (
-                    <span key={tag} className="tag-badge">
-                      {tag}
-                      <button
-                        className="tag-remove-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemoveTag(doc.id, tag);
-                        }}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  {newTagMode === doc.id && (
-                    <input
-                      type="text"
-                      placeholder="New tag..."
-                      value={newTag}
-                      onChange={(e) => setNewTag(e.target.value)}
-                      className="tag-input"
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleAddTag(doc.id);
-                        if (e.key === 'Escape') {
-                          setNewTagMode(null);
-                          setNewTag('');
-                        }
-                      }}
-                    />
-                  )}
-                  {newTagMode !== doc.id && (
-                    <button
-                      onClick={() => setNewTagMode(doc.id)}
-                      className="tag-input"
-                      style={{ cursor: 'pointer', padding: '2px 5px' }}
-                    >
-                      + Tag
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-          {regularDocs.length === 0 && pinnedDocs.length === 0 && (
-            <div style={{ padding: '0 8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-              No documents yet
-            </div>
-          )}
-        </ul>
+      {/* Search */}
+      <div className="sidebar-search-container">
+        <SearchBar value={searchQuery} onChange={onSearch} />
       </div>
 
+      {/* Team name + document tree */}
+      <div className="doc-list-section">
+        <h3 className="doc-list-title">{teamName || 'Local Workspace'}</h3>
+        <FolderTree
+          folders={folders}
+          documents={documents}
+          currentDocId={currentDocId}
+          searchQuery={searchQuery}
+          onSelectDoc={onSelectDoc}
+          onDeleteDoc={onDeleteDoc}
+          onDeleteFolder={onDeleteFolder}
+          onTogglePin={onTogglePin}
+          onToggleLock={onToggleLock}
+          onMoveDoc={onMoveDoc}
+        />
+      </div>
+
+      {/* Tags for current doc */}
+      {currentDocId && (
+        <div className="sidebar-tags-section">
+          <div className="tags-section-header">
+            <Tag size={11} />
+            <span>Tags</span>
+          </div>
+          <div className="tags-list-row">
+            {currentDocTags.map(tag => (
+              <span key={tag} className="tag-badge">
+                {tag}
+                <button
+                  className="tag-remove-btn"
+                  onClick={() => onRemoveTag(currentDocId, tag)}
+                  title="Remove tag"
+                >
+                  <X size={9} />
+                </button>
+              </span>
+            ))}
+          </div>
+          <input
+            type="text"
+            className="tag-input"
+            placeholder="Add tag, press Enter..."
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={handleAddTag}
+          />
+        </div>
+      )}
+
+      {/* Footer — teammates */}
       <div className="sidebar-footer">
         <div className="members-section">
           <h4 className="members-title">
@@ -277,7 +205,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               );
             })}
             {peers.length === 0 && (
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Only you</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                Only you — share to collaborate
+              </span>
             )}
           </div>
         </div>

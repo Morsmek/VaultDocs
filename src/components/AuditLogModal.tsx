@@ -39,9 +39,7 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ docId, docTitle, o
   const [entries, setEntries] = useState<AuditEntry[]>([]);
 
   useEffect(() => {
-    if (docId) {
-      listAuditEntries(docId).then(setEntries);
-    }
+    listAuditEntries(docId).then(setEntries);
   }, [docId]);
 
   const formatTime = (timestamp: number) => {
@@ -84,11 +82,11 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ docId, docTitle, o
               </div>
               <div className="audit-entry-body">
                 <div className="audit-entry-header">
-                  <div className="audit-avatar">{getInitials(entry.actor)}</div>
+                  <div className="audit-avatar">{getInitials(entry.username)}</div>
                   <div className="audit-entry-info">
-                    <span className="audit-username">{entry.actor}</span>
+                    <span className="audit-username">{entry.username}</span>
                     <span className="audit-action">{entry.action}</span>
-                    {entry.details && <span className="audit-detail">{JSON.stringify(entry.details)}</span>}
+                    {entry.detail && <span className="audit-detail">{entry.detail}</span>}
                   </div>
                   <span className="audit-time">{formatTime(entry.timestamp)}</span>
                 </div>
