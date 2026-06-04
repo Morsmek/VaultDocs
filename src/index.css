@@ -827,3 +827,214 @@ body {
     opacity: 1;
   }
 }
+
+/* ─── Mobile Menu Button ───────────────────────────────────────────────── */
+
+.mobile-menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color var(--transition-fast);
+}
+
+.mobile-menu-btn:hover {
+  background-color: var(--bg-tertiary);
+}
+
+/* ─── Sidebar Wrapper for Mobile ───────────────────────────────────────── */
+
+.sidebar-wrapper {
+  display: contents;
+}
+
+/* ─── Mobile Overlay ───────────────────────────────────────────────────── */
+
+.sidebar-overlay {
+  display: none;
+}
+
+/* ─── Responsive Styles ────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 280px;
+  }
+
+  .mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar-wrapper {
+    display: block;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--sidebar-width);
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar-wrapper.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-wrapper .sidebar {
+    width: 100%;
+    height: 100%;
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: 99;
+  }
+
+  .main-content {
+    width: 100%;
+  }
+
+  .workspace-header {
+    padding: 0 12px;
+  }
+
+  .header-doc-title {
+    font-size: 14px;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workspace-actions {
+    gap: 4px;
+  }
+
+  .btn-invite-outline {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  .btn-text {
+    display: none;
+  }
+
+  .btn-invite {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .editor-wrapper {
+    padding: 16px 12px;
+  }
+
+  .editor-container {
+    max-width: 100% !important;
+  }
+
+  .editor-title-input {
+    font-size: 24px !important;
+  }
+
+  .static-toolbar {
+    padding: 6px 8px;
+    gap: 2px;
+  }
+
+  .toolbar-btn {
+    padding: 6px;
+  }
+
+  .ProseMirror {
+    font-size: 15px;
+    padding: 0 4px;
+  }
+
+  .status-bar {
+    padding: 0 12px;
+    font-size: 10px;
+  }
+
+  /* Comments panel on mobile */
+  .comments-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 320px;
+    z-index: 90;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+  }
+
+  .main-content.with-comments-panel .comments-panel {
+    transform: translateX(0);
+  }
+
+  /* Setup screen mobile */
+  .setup-screen {
+    padding: 20px 16px;
+  }
+
+  .setup-card {
+    padding: 28px 20px;
+    max-width: 100%;
+  }
+
+  .setup-logo img {
+    height: 36px !important;
+  }
+
+  /* Modal mobile */
+  .modal-content {
+    width: 95%;
+    max-width: 100%;
+    margin: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+  }
+}
+
+/* ─── Small Mobile (< 480px) ───────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .workspace-actions {
+    gap: 2px;
+  }
+
+  .btn-invite-outline {
+    padding: 5px 6px;
+  }
+
+  .btn-invite {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .header-doc-title {
+    max-width: 100px;
+    font-size: 13px;
+  }
+
+  .editor-title-input {
+    font-size: 20px !important;
+  }
+
+  .ProseMirror {
+    font-size: 14px;
+  }
+
+  .comments-panel {
+    max-width: 100%;
+  }
+}

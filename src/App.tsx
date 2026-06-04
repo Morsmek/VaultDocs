@@ -9,7 +9,9 @@ import {
   Lock,
   Unlock,
   ClipboardList,
-  MessageSquare
+  MessageSquare,
+  Menu,
+  X
 } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
@@ -68,6 +70,7 @@ function App() {
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   
   // Setup Wizard State
   const [newTeamName, setNewTeamName] = useState('');
@@ -515,31 +518,47 @@ function App() {
 
   return (
     <div className="app-container">
-      <Sidebar
-        documents={documents}
-        currentDocId={currentDocId}
-        folders={folders}
-        searchQuery={searchQuery}
-        onSearch={setSearchQuery}
-        onSelectDoc={handleSelectDoc}
-        onCreateDoc={() => handleCreateDoc()}
-        onDeleteDoc={handleDeleteDoc}
-        onCreateFolder={handleCreateFolder}
-        onDeleteFolder={handleDeleteFolder}
-        onTogglePin={handleTogglePin}
-        onToggleLock={handleToggleLock}
-        onMoveDoc={handleMoveDoc}
-        onOpenTemplates={() => setIsTemplatesOpen(true)}
-        onAddTag={handleAddTag}
-        onRemoveTag={handleRemoveTag}
-        currentDocTags={currentDocTags}
-        teamName={activeTeam.teamName}
-        peers={activePeersList}
-        onLeaveTeam={handleLeaveTeam}
-      />
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+      )}
+      
+      <div className={`sidebar-wrapper ${sidebarOpen ? 'open' : ''}`}>
+        <Sidebar
+          documents={documents}
+          currentDocId={currentDocId}
+          folders={folders}
+          searchQuery={searchQuery}
+          onSearch={setSearchQuery}
+          onSelectDoc={(id) => { handleSelectDoc(id); setSidebarOpen(false); }}
+          onCreateDoc={() => { handleCreateDoc(); setSidebarOpen(false); }}
+          onDeleteDoc={handleDeleteDoc}
+          onCreateFolder={handleCreateFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onTogglePin={handleTogglePin}
+          onToggleLock={handleToggleLock}
+          onMoveDoc={handleMoveDoc}
+          onOpenTemplates={() => setIsTemplatesOpen(true)}
+          onAddTag={handleAddTag}
+          onRemoveTag={handleRemoveTag}
+          currentDocTags={currentDocTags}
+          teamName={activeTeam.teamName}
+          peers={activePeersList}
+          onLeaveTeam={handleLeaveTeam}
+        />
+      </div>
 
       <main className={`main-content ${isCommentsOpen ? 'with-comments-panel' : ''}`}>
         <header className="workspace-header">
+          {/* Mobile hamburger menu */}
+          <button 
+            className="mobile-menu-btn" 
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label="Toggle sidebar"
+          >
+            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+          
           <span className="header-doc-title">
             {currentDoc?.title || 'No Document Selected'}
             {currentDoc?.isLocked && <Lock size={13} style={{ marginLeft: '8px', color: 'var(--error-color)', verticalAlign: 'middle' }} />}
@@ -553,7 +572,7 @@ function App() {
                   title={currentDoc.isLocked ? 'Unlock document' : 'Lock document'}
                 >
                   {currentDoc.isLocked ? <Unlock size={14} /> : <Lock size={14} />}
-                  {currentDoc.isLocked ? 'Unlock' : 'Lock'}
+                  <span className="btn-text">{currentDoc.isLocked ? 'Unlock' : 'Lock'}</span>
                 </button>
                 <button
                   onClick={() => setIsAuditOpen(true)}
@@ -561,7 +580,7 @@ function App() {
                   title="View audit log"
                 >
                   <ClipboardList size={14} />
-                  Audit
+                  <span className="btn-text">Audit</span>
                 </button>
                 <button
                   onClick={() => setIsCommentsOpen(v => !v)}
@@ -569,12 +588,12 @@ function App() {
                   title="Toggle comments"
                 >
                   <MessageSquare size={14} />
-                  Comments
+                  <span className="btn-text">Comments</span>
                 </button>
                 <ExportMenu docTitle={currentDoc.title} />
                 <button onClick={() => setIsInviteOpen(true)} className="btn-invite-outline">
                   <Share2 size={14} />
-                  Share
+                  <span className="btn-text">Share</span>
                 </button>
               </>
             )}
