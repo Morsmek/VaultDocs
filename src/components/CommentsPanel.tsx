@@ -13,7 +13,6 @@ interface CommentsPanelProps {
 
 export const CommentsPanel: React.FC<CommentsPanelProps> = ({
   docId,
-  teamId,
   username,
   onClose,
   onCommentAdded
@@ -34,7 +33,13 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
-    await saveComment(docId, teamId, username, newComment.trim());
+    await saveComment({
+      id: 'comment-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+      docId,
+      author: username,
+      text: newComment.trim(),
+      createdAt: Date.now()
+    });
     setNewComment('');
     await loadComments();
     onCommentAdded?.();
@@ -115,12 +120,12 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
         {visible.map(comment => (
           <div key={comment.id} className={`comment-item ${comment.resolved ? 'resolved' : ''}`}>
             <div className="comment-avatar">
-              {getInitials(comment.username)}
+              {getInitials(comment.author)}
             </div>
             <div className="comment-body">
-              <div className="comment-meta">
-                <span className="comment-author">{comment.username}</span>
-                <span className="comment-time">{formatTime(comment.createdAt)}</span>
+                <div className="comment-meta">
+                  <span className="comment-author">{comment.author}</span>
+                  <span className="comment-time">{formatTime(comment.createdAt)}</span>
               </div>
               <p className="comment-text">{comment.text}</p>
               <div className="comment-actions">

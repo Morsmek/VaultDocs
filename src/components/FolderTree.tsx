@@ -71,8 +71,8 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
         <FileText size={13} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
         <span className="doc-item-name">{doc.title || 'Untitled'}</span>
         <div className="doc-item-indicators">
-          {doc.isLocked && <Lock size={10} className="indicator-lock" title="Locked" />}
-          {doc.isPinned && <Pin size={10} className="indicator-pin" title="Pinned" />}
+          {doc.isLocked && <Lock size={10} className="indicator-lock" />}
+          {doc.isPinned && <Pin size={10} className="indicator-pin" />}
         </div>
         <span className="doc-item-info">{formatTime(doc.updatedAt)}</span>
       </div>
