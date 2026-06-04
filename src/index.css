@@ -1,21 +1,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  /* Design Tokens - Sleek Dark Palette (Linear/Notion inspired) */
-  --bg-primary: #0b0c10;
-  --bg-secondary: #12131a;
-  --bg-tertiary: #1a1c26;
+  /* Design Tokens - Light Palette with VaultDocs Navy & Blue */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f7fa;
+  --bg-tertiary: #eef2f7;
   
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(139, 92, 246, 0.5); /* Purple accent */
+  --border-color: rgba(0, 51, 102, 0.08);
+  --border-focus: rgba(0, 102, 255, 0.3); /* Bright blue accent */
   
-  --text-primary: #f3f4f6;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
+  --text-primary: #1a1a2e;
+  --text-secondary: #4a5568;
+  --text-muted: #718096;
   
-  --accent-color: #8b5cf6;
-  --accent-hover: #a78bfa;
-  --accent-light: rgba(139, 92, 246, 0.15);
+  --accent-color: #0066ff;
+  --accent-hover: #0052cc;
+  --accent-light: rgba(0, 102, 255, 0.08);
   
   --success-color: #10b981;
   --error-color: #ef4444;
@@ -76,12 +76,19 @@ body {
   align-items: center;
   gap: 10px;
   border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
 }
 
 .logo-icon {
   color: var(--accent-color);
   display: flex;
   align-items: center;
+}
+
+.logo-image {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
 }
 
 .logo-text {
@@ -101,9 +108,9 @@ body {
   width: 100%;
   padding: 10px 14px;
   background-color: var(--accent-light);
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  border: 1px solid rgba(0, 102, 255, 0.2);
   border-radius: 8px;
-  color: var(--text-primary);
+  color: var(--accent-color);
   font-size: 13px;
   font-weight: 600;
   font-family: var(--font-sans);
@@ -116,9 +123,9 @@ body {
 }
 
 .btn-new-doc:hover {
-  background-color: var(--accent-color);
+  background-color: rgba(0, 102, 255, 0.15);
   border-color: var(--accent-color);
-  box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 0 12px rgba(0, 102, 255, 0.2);
 }
 
 .doc-list-section {
@@ -163,7 +170,7 @@ body {
 }
 
 .doc-item.active {
-  background-color: rgba(139, 92, 246, 0.1);
+  background-color: rgba(0, 102, 255, 0.08);
   color: var(--accent-hover);
   border-left: 2px solid var(--accent-color);
   border-top-left-radius: 0;
@@ -208,7 +215,7 @@ body {
 .sidebar-footer {
   padding: 16px 20px;
   border-top: 1px solid var(--border-color);
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--bg-secondary);
 }
 
 .members-section {
@@ -301,7 +308,7 @@ body {
 .btn-invite {
   padding: 8px 14px;
   background-color: var(--accent-color);
-  color: var(--text-primary);
+  color: #ffffff;
   border: none;
   border-radius: 6px;
   font-size: 13px;
@@ -545,7 +552,7 @@ body {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -554,13 +561,13 @@ body {
 }
 
 .modal-content {
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   width: 90%;
   max-width: 480px;
   padding: 28px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -624,7 +631,7 @@ body {
 }
 
 .invite-input:focus {
-  border-color: var(--border-focus);
+  border-color: var(--accent-color);
 }
 
 .btn-copy {
@@ -679,13 +686,13 @@ body {
 }
 
 .setup-card {
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 16px;
   width: 100%;
   max-width: 440px;
   padding: 40px 32px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -747,14 +754,18 @@ body {
 }
 
 .form-input:focus {
-  border-color: var(--border-focus);
+  border-color: var(--accent-color);
+}
+
+.form-input::placeholder {
+  color: var(--text-muted);
 }
 
 .btn-submit {
   width: 100%;
   padding: 12px;
   background-color: var(--accent-color);
-  color: var(--text-primary);
+  color: #ffffff;
   border: none;
   border-radius: 8px;
   font-size: 14px;

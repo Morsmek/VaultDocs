@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Plus, Trash2, Users, Lock, LogOut } from 'lucide-react';
+import { FileText, Plus, Trash2, Users, LogOut } from 'lucide-react';
 import type { LocalDocument } from '../db/db';
 
 interface SidebarProps {
@@ -31,10 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <span className="logo-icon">
-          <Lock size={18} />
-        </span>
-        <span className="logo-text">VaultDocs</span>
+        <img src="/logo.png" alt="VaultDocs" className="logo-image" />
         <div style={{ flex: 1 }} />
         <button 
           onClick={onLeaveTeam} 

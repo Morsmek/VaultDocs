@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import * as Y from 'yjs';
 import { 
-  Lock, 
   Wifi, 
   WifiOff, 
   Share2, 
@@ -407,7 +406,7 @@ function App() {
       <div className="setup-screen">
         <div className="setup-card">
           <div className="setup-logo">
-            <Lock size={32} />
+            <img src="/logo.png" alt="VaultDocs" style={{ height: '48px', width: 'auto' }} />
           </div>
           <h2 className="setup-title">VaultDocs Setup</h2>
           <p className="setup-description">
