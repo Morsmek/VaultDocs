@@ -16,9 +16,15 @@ import {
   listLocalTeams, 
   saveLocalDocument, 
   saveLocalTeam, 
-  deleteLocalDocument 
+  deleteLocalDocument,
+  listFolders,
+  saveFolder,
+  togglePin,
+  addTag,
+  removeTag,
+  searchDocuments
 } from './db/db';
-import type { LocalDocument, LocalTeam } from './db/db';
+import type { LocalDocument, LocalTeam, LocalFolder } from './db/db';
 import { 
   deriveKey, 
   encryptUpdate, 
@@ -36,6 +42,8 @@ function App() {
   const [teams, setTeams] = useState<LocalTeam[]>([]);
   const [documents, setDocuments] = useState<LocalDocument[]>([]);
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
+  const [folders, setFolders] = useState<LocalFolder[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Collaborative Instances
   const [currentYDoc, setCurrentYDoc] = useState<Y.Doc | null>(null);
@@ -138,7 +146,9 @@ function App() {
 
     const loadDocs = async () => {
       const docs = await listLocalDocuments(activeTeam.teamId);
+      const foldersList = await listFolders(activeTeam.teamId);
       setDocuments(docs);
+      setFolders(foldersList);
       
       // If we have documents, select the first one. Otherwise, create a default one
       if (docs.length > 0) {
@@ -283,6 +293,60 @@ function App() {
     });
 
     setDocuments(prev => prev.map(d => d.id === currentDocId ? { ...d, title: newTitle, updatedAt: Date.now() } : d));
+  };
+
+  // 10. Folder Management
+  const handleCreateFolder = async (name: string) => {
+    if (!activeTeam) return;
+    const folder: LocalFolder = {
+      id: 'folder-' + Date.now(),
+      name,
+      teamId: activeTeam.teamId,
+      createdAt: Date.now()
+    };
+    await saveFolder(folder);
+    const newFolders = await listFolders(activeTeam.teamId);
+    setFolders(newFolders);
+    showToast(`Folder "${name}" created`);
+  };
+
+  const handleSelectFolder = () => {
+    // Folder selection logic - for now just store the state
+    // Future: filter documents by folder
+  };
+
+  // 11. Pin/Unpin Documents
+  const handleTogglePin = async (docId: string, pinned: boolean) => {
+    await togglePin(docId, pinned);
+    const updatedDocs = await listLocalDocuments(activeTeam?.teamId);
+    setDocuments(updatedDocs);
+    showToast(pinned ? 'Document pinned' : 'Document unpinned');
+  };
+
+  // 12. Tag Management
+  const handleAddTag = async (docId: string, tag: string) => {
+    await addTag(docId, tag);
+    const updatedDocs = await listLocalDocuments(activeTeam?.teamId);
+    setDocuments(updatedDocs);
+  };
+
+  const handleRemoveTag = async (docId: string, tag: string) => {
+    await removeTag(docId, tag);
+    const updatedDocs = await listLocalDocuments(activeTeam?.teamId);
+    setDocuments(updatedDocs);
+  };
+
+  // 13. Search Documents
+  const handleSearchChange = async (query: string) => {
+    setSearchQuery(query);
+    if (!activeTeam) return;
+    if (query.trim()) {
+      const results = await searchDocuments(query, activeTeam.teamId);
+      setDocuments(results);
+    } else {
+      const allDocs = await listLocalDocuments(activeTeam.teamId);
+      setDocuments(allDocs);
+    }
   };
 
   // 10. Wizard: Create New Team
@@ -494,10 +558,19 @@ function App() {
     <div className="app-container">
       <Sidebar
         documents={documents}
+        folders={folders}
         currentDocId={currentDocId}
         onSelectDoc={handleSelectDoc}
         onCreateDoc={() => handleCreateDoc()}
         onDeleteDoc={handleDeleteDoc}
+        onCreateFolder={handleCreateFolder}
+        onSelectFolder={handleSelectFolder}
+        onTogglePin={handleTogglePin}
+        onAddTag={handleAddTag}
+        onRemoveTag={handleRemoveTag}
+        onOpenTemplates={() => {}}
+        searchQuery={searchQuery}
+        onSearchChange={handleSearchChange}
         teamName={activeTeam.teamName}
         peers={activePeersList}
         onLeaveTeam={handleLeaveTeam}
