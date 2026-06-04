@@ -5,34 +5,20 @@ import {
   WifiOff, 
   Share2, 
   ShieldCheck,
-  UserPlus,
-  Lock,
-  Unlock,
-  ClipboardList,
-  MessageSquare
+  UserPlus
 } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
 import { InviteModal } from './components/InviteModal';
-import { CommentsPanel } from './components/CommentsPanel';
-import { AuditLogModal } from './components/AuditLogModal';
-import { TemplatesModal } from './components/TemplatesModal';
-import { ExportMenu } from './components/ExportMenu';
 import { 
   db, 
   listLocalDocuments, 
   listLocalTeams, 
   saveLocalDocument, 
   saveLocalTeam, 
-  deleteLocalDocument,
-  createFolder,
-  listFolders,
-  deleteFolder,
-  addAuditEntry,
-  saveComment,
-  seedDefaultTemplates
+  deleteLocalDocument 
 } from './db/db';
-import type { LocalDocument, LocalTeam, LocalFolder, DocTemplate } from './db/db';
+import type { LocalDocument, LocalTeam } from './db/db';
 import { 
   deriveKey, 
   encryptUpdate, 
@@ -50,7 +36,6 @@ function App() {
   const [teams, setTeams] = useState<LocalTeam[]>([]);
   const [documents, setDocuments] = useState<LocalDocument[]>([]);
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
-  const [folders, setFolders] = useState<LocalFolder[]>([]);
   
   // Collaborative Instances
   const [currentYDoc, setCurrentYDoc] = useState<Y.Doc | null>(null);
@@ -64,11 +49,7 @@ function App() {
 
   // UI State
   const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
-  const [isAuditOpen, setIsAuditOpen] = useState(false);
-  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   
   // Setup Wizard State
   const [newTeamName, setNewTeamName] = useState('');
@@ -83,26 +64,13 @@ function App() {
   // Refs for tracking active doc to prevent race conditions
   const activeDocIdRef = useRef<string | null>(null);
 
-  // ─── Helpers ────────────────────────────────────────────────────────────────
-
+  // 1. Toast Helper
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const refreshDocs = async (teamId: string) => {
-    const docs = await listLocalDocuments(teamId);
-    setDocuments(docs);
-    return docs;
-  };
-
-  const refreshFolders = async (teamId: string) => {
-    const f = await listFolders(teamId);
-    setFolders(f);
-  };
-
-  // ─── 1. Parse URL hashes for invite tokens ───────────────────────────────
-
+  // 2. Parse URL hashes for invite tokens
   useEffect(() => {
     const parseHash = () => {
       const hash = window.location.hash;
@@ -110,58 +78,71 @@ function App() {
         const urlParams = new URLSearchParams(hash.substring(hash.indexOf('?')));
         const token = urlParams.get('token');
         const secret = urlParams.get('secret');
+        
         if (token && secret) {
           try {
             const parsed = parseInviteToken(token, secret);
             setInviteToken(token);
             setInviteSecret(secret);
-            setInviteDetails({ docTitle: parsed.docTitle, teamId: parsed.teamId });
+            setInviteDetails({
+              docTitle: parsed.docTitle,
+              teamId: parsed.teamId
+            });
             setSetupMode('join');
-          } catch {
+          } catch (e) {
             showToast('Invalid or corrupted invite token');
           }
         }
       }
     };
+
     parseHash();
     window.addEventListener('hashchange', parseHash);
     return () => window.removeEventListener('hashchange', parseHash);
   }, []);
 
-  // ─── 2. Load teams & seed templates on mount ─────────────────────────────
-
+  // 3. Load teams & active team on mount
   useEffect(() => {
     const loadTeams = async () => {
+      // Clear legacy corrupted documents once to prevent runtime crashes
       if (!localStorage.getItem('vaultdocs_db_clean_v2')) {
         await db.documents.clear();
         localStorage.setItem('vaultdocs_db_clean_v2', 'true');
       }
-      // Seed default templates once
-      await seedDefaultTemplates();
 
       const allTeams = await listLocalTeams();
       setTeams(allTeams);
+      
       const lastTeamId = localStorage.getItem('vaultdocs_last_team');
       const foundTeam = allTeams.find(t => t.teamId === lastTeamId) || allTeams[0];
+      
       if (foundTeam) {
         setActiveTeam(foundTeam);
         localStorage.setItem('vaultdocs_last_team', foundTeam.teamId);
       } else {
-        if (!inviteToken) setSetupMode('create');
+        // No teams exist yet, prompt setup mode unless user is currently joining via invite link
+        if (!inviteToken) {
+          setSetupMode('create');
+        }
       }
     };
     loadTeams();
   }, [inviteToken]);
 
-  // ─── 3. Load docs + folders when team changes ────────────────────────────
-
+  // 4. Load documents when active team changes
   useEffect(() => {
-    if (!activeTeam) { setDocuments([]); setFolders([]); return; }
-    const load = async () => {
+    if (!activeTeam) {
+      setDocuments([]);
+      return;
+    }
+
+    const loadDocs = async () => {
       const docs = await listLocalDocuments(activeTeam.teamId);
       setDocuments(docs);
-      await refreshFolders(activeTeam.teamId);
+      
+      // If we have documents, select the first one. Otherwise, create a default one
       if (docs.length > 0) {
+        // Ensure we don't automatically override a specifically selected document
         if (!currentDocId || !docs.some(d => d.id === currentDocId)) {
           handleSelectDoc(docs[0].id);
         }
@@ -169,61 +150,90 @@ function App() {
         handleCreateDoc('Welcome to VaultDocs');
       }
     };
-    load();
+
+    loadDocs();
   }, [activeTeam]);
 
-  // ─── 4. Provider cleanup ────────────────────────────────────────────────
-
+  // 5. Cleanup current provider on document change or unmount
   const cleanupProvider = () => {
-    if (currentProvider) { currentProvider.destroy(); setCurrentProvider(null); }
-    if (currentYDoc) { currentYDoc.destroy(); setCurrentYDoc(null); }
+    if (currentProvider) {
+      currentProvider.destroy();
+      setCurrentProvider(null);
+    }
+    if (currentYDoc) {
+      currentYDoc.destroy();
+      setCurrentYDoc(null);
+    }
   };
 
-  // ─── 5. Select doc ──────────────────────────────────────────────────────
-
+  // 6. Select document and initialize collaborative E2EE WebRTC sync
   const handleSelectDoc = async (docId: string) => {
     if (!activeTeam) return;
+    
+    // Set refs and clean up previous connection
     activeDocIdRef.current = docId;
     cleanupProvider();
     setCurrentDocId(docId);
-    setIsCommentsOpen(false);
-    setIsAuditOpen(false);
 
+    // Initialize Yjs Doc
     const ydoc = new Y.Doc();
     setCurrentYDoc(ydoc);
 
+    // Load from local IndexedDB first (Local-first persistence)
     const localDoc = await db.documents.get(docId);
     if (localDoc && localDoc.encryptedState) {
       try {
         const decryptedState = decryptUpdate(localDoc.encryptedState, activeTeam.teamKey);
         Y.applyUpdate(ydoc, decryptedState);
-      } catch {
+      } catch (err) {
         showToast('Error decrypting document. Incorrect cryptographic keys.');
       }
     }
 
+    // Bind local doc changes to automatically update Dexie database (encrypted)
     ydoc.on('update', async (_, origin) => {
+      // Avoid circular updates from our own provider
       if (origin === currentProvider) return;
+
       const state = Y.encodeStateAsUpdate(ydoc);
       const encrypted = encryptUpdate(state, activeTeam.teamKey);
-      await db.documents.update(docId, { encryptedState: encrypted, updatedAt: Date.now() });
+      
+      await db.documents.update(docId, {
+        encryptedState: encrypted,
+        updatedAt: Date.now()
+      });
+
+      // Update local React list state
       setDocuments(prev => prev.map(d => d.id === docId ? { ...d, updatedAt: Date.now() } : d));
     });
 
-    const provider = new EncryptedWebrtcProvider(ydoc, docId, activeTeam.teamKey, username || 'Anonymous');
+    // Initialize E2EE WebRTC Provider
+    const provider = new EncryptedWebrtcProvider(
+      ydoc,
+      docId,
+      activeTeam.teamKey,
+      username || 'Anonymous'
+    );
+    
     setCurrentProvider(provider);
-    provider.onStatus((status) => setProviderStatus(status));
+
+    // Track status
+    provider.onStatus((status) => {
+      setProviderStatus(status);
+    });
   };
 
-  // ─── 6. Create doc ──────────────────────────────────────────────────────
-
-  const handleCreateDoc = async (initialTitle = 'Untitled Document', templateContent?: string) => {
+  // 7. Handle creation of a new document
+  const handleCreateDoc = async (initialTitle = 'Untitled Document') => {
     if (!activeTeam) return;
-    const docId = 'doc-' + Math.random().toString(36).substring(2, 11);
 
+    const docId = 'doc-' + Math.random().toString(36).substring(2, 11);
+    
+    // Initialize temporary empty YDoc state
     const tempYDoc = new Y.Doc();
     const ytitle = tempYDoc.getText('title');
     ytitle.insert(0, initialTitle);
+    
     const state = Y.encodeStateAsUpdate(tempYDoc);
     const encrypted = encryptUpdate(state, activeTeam.teamKey);
     tempYDoc.destroy();
@@ -236,151 +246,95 @@ function App() {
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
-    await saveLocalDocument(newDoc);
-    await addAuditEntry(docId, activeTeam.teamId, 'created', username || 'Anonymous', initialTitle);
-    await refreshDocs(activeTeam.teamId);
-    handleSelectDoc(docId);
 
-    // If a template was selected, apply its content after editor mounts
-    // (stored in sessionStorage so Editor can read it on mount)
-    if (templateContent) {
-      sessionStorage.setItem('vaultdocs_template_content', templateContent);
-    }
+    await saveLocalDocument(newDoc);
+    
+    // Refresh documents list
+    const docs = await listLocalDocuments(activeTeam.teamId);
+    setDocuments(docs);
+    
+    // Select the new doc
+    handleSelectDoc(docId);
   };
 
-  // ─── 7. Delete doc ──────────────────────────────────────────────────────
-
+  // 8. Handle document deletion
   const handleDeleteDoc = async (docId: string) => {
-    if (activeTeam) {
-      await addAuditEntry(docId, activeTeam.teamId, 'deleted', username || 'Anonymous');
-    }
     await deleteLocalDocument(docId);
-    const docs = await refreshDocs(activeTeam?.teamId ?? '');
+    
+    const docs = await listLocalDocuments(activeTeam?.teamId);
+    setDocuments(docs);
+
     if (currentDocId === docId) {
       cleanupProvider();
       setCurrentDocId(null);
-      if (docs.length > 0) handleSelectDoc(docs[0].id);
+      if (docs.length > 0) {
+        handleSelectDoc(docs[0].id);
+      }
     }
   };
 
-  // ─── 8. Title change ────────────────────────────────────────────────────
-
+  // 9. Sync title updates from Editor back to document list
   const handleTitleChange = async (newTitle: string) => {
     if (!currentDocId) return;
-    await db.documents.update(currentDocId, { title: newTitle, updatedAt: Date.now() });
+    
+    await db.documents.update(currentDocId, {
+      title: newTitle,
+      updatedAt: Date.now()
+    });
+
     setDocuments(prev => prev.map(d => d.id === currentDocId ? { ...d, title: newTitle, updatedAt: Date.now() } : d));
   };
 
-  // ─── 9. Folder management ───────────────────────────────────────────────
-
-  const handleCreateFolder = async (name: string) => {
-    if (!activeTeam) return;
-    await createFolder(name, activeTeam.teamId);
-    await refreshFolders(activeTeam.teamId);
-    showToast(`Folder "${name}" created`);
-  };
-
-  const handleDeleteFolder = async (folderId: string) => {
-    await deleteFolder(folderId);
-    if (activeTeam) await refreshFolders(activeTeam.teamId);
-  };
-
-  const handleMoveDoc = async (docId: string, folderId: string | undefined) => {
-    await db.documents.update(docId, { folderId });
-    if (activeTeam) {
-      await refreshDocs(activeTeam.teamId);
-      const folderName = folderId ? folders.find(f => f.id === folderId)?.name : 'All Documents';
-      await addAuditEntry(docId, activeTeam.teamId, 'moved', username || 'Anonymous', `to ${folderName}`);
-    }
-  };
-
-  // ─── 10. Pin / Lock ─────────────────────────────────────────────────────
-
-  const handleTogglePin = async (docId: string) => {
-    const doc = documents.find(d => d.id === docId);
-    if (!doc || !activeTeam) return;
-    const newPinned = !doc.isPinned;
-    await db.documents.update(docId, { isPinned: newPinned });
-    await addAuditEntry(docId, activeTeam.teamId, newPinned ? 'pinned' : 'unpinned', username || 'Anonymous');
-    await refreshDocs(activeTeam.teamId);
-    showToast(newPinned ? 'Document pinned' : 'Document unpinned');
-  };
-
-  const handleToggleLock = async (docId: string) => {
-    const doc = documents.find(d => d.id === docId);
-    if (!doc || !activeTeam) return;
-    const newLocked = !doc.isLocked;
-    await db.documents.update(docId, { isLocked: newLocked, lockedBy: newLocked ? (username || 'Anonymous') : undefined });
-    await addAuditEntry(docId, activeTeam.teamId, newLocked ? 'locked' : 'unlocked', username || 'Anonymous');
-    await refreshDocs(activeTeam.teamId);
-    showToast(newLocked ? 'Document locked' : 'Document unlocked');
-  };
-
-  // ─── 11. Tags ───────────────────────────────────────────────────────────
-
-  const handleAddTag = async (docId: string, tag: string) => {
-    const doc = documents.find(d => d.id === docId);
-    if (!doc || !activeTeam) return;
-    const existing = doc.tags || [];
-    if (existing.includes(tag)) return;
-    const tags = [...existing, tag];
-    await db.documents.update(docId, { tags });
-    await addAuditEntry(docId, activeTeam.teamId, 'tagged', username || 'Anonymous', tag);
-    await refreshDocs(activeTeam.teamId);
-  };
-
-  const handleRemoveTag = async (docId: string, tag: string) => {
-    const doc = documents.find(d => d.id === docId);
-    if (!doc) return;
-    const tags = (doc.tags || []).filter(t => t !== tag);
-    await db.documents.update(docId, { tags });
-    if (activeTeam) await refreshDocs(activeTeam.teamId);
-  };
-
-  // ─── 12. Templates ──────────────────────────────────────────────────────
-
-  const handleSelectTemplate = async (template: DocTemplate) => {
-    setIsTemplatesOpen(false);
-    await handleCreateDoc(template.name, template.content);
-  };
-
-  // ─── 13. Comment added audit ────────────────────────────────────────────
-
-  const handleCommentAdded = async () => {
-    if (!currentDocId || !activeTeam) return;
-    await addAuditEntry(currentDocId, activeTeam.teamId, 'commented', username || 'Anonymous');
-  };
-
-  // ─── 14. Create Team ────────────────────────────────────────────────────
-
+  // 10. Wizard: Create New Team
   const handleCreateTeamSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !newTeamName.trim()) {
       showToast('Username and Team Name are required');
       return;
     }
+
     localStorage.setItem('vaultdocs_username', username.trim());
+    
+    // If no passphrase is set, generate a secure random one
     const pass = newTeamPassphrase.trim() || generateRandomPassphrase();
     const teamId = 'team-' + Math.random().toString(36).substring(2, 11);
+    
+    // Derive symmetric encryption key
     const teamKey = await deriveKey(pass, teamId);
-    const team: LocalTeam = { teamId, teamName: newTeamName.trim(), passphraseHash: pass, teamKey, createdAt: Date.now() };
+
+    const team: LocalTeam = {
+      teamId,
+      teamName: newTeamName.trim(),
+      passphraseHash: pass, // Using passphrase directly for team invites
+      teamKey,
+      createdAt: Date.now()
+    };
+
     await saveLocalTeam(team);
+    
     const allTeams = await listLocalTeams();
     setTeams(allTeams);
     setActiveTeam(team);
     localStorage.setItem('vaultdocs_last_team', team.teamId);
+    
     setSetupMode(null);
     showToast(`Team "${team.teamName}" created successfully!`);
   };
 
-  // ─── 15. Join Team ──────────────────────────────────────────────────────
-
+  // 11. Wizard: Join Team via invite token
   const handleJoinTeamSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !inviteToken || !inviteSecret) { showToast('Username is required'); return; }
+    if (!username.trim() || !inviteToken || !inviteSecret) {
+      showToast('Username is required');
+      return;
+    }
+
     try {
       localStorage.setItem('vaultdocs_username', username.trim());
+      
       const parsed = parseInviteToken(inviteToken, inviteSecret);
+      
+      // Save team credentials to DB
       const team: LocalTeam = {
         teamId: parsed.teamId,
         teamName: `Shared Team (${parsed.teamId.substring(5, 9)})`,
@@ -388,24 +342,45 @@ function App() {
         teamKey: parsed.teamKey,
         createdAt: Date.now()
       };
+
       await saveLocalTeam(team);
-      const doc: LocalDocument = { id: parsed.docId, title: parsed.docTitle, encryptedState: null, teamId: parsed.teamId, createdAt: Date.now(), updatedAt: Date.now() };
+      
+      // Save the shared document structure placeholder
+      const doc: LocalDocument = {
+        id: parsed.docId,
+        title: parsed.docTitle,
+        encryptedState: null, // Let it sync from other peers
+        teamId: parsed.teamId,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+
       await saveLocalDocument(doc);
+      
+      // Update states
       const allTeams = await listLocalTeams();
       setTeams(allTeams);
       setActiveTeam(team);
       localStorage.setItem('vaultdocs_last_team', team.teamId);
-      setInviteToken(null); setInviteSecret(null); setInviteDetails(null); setSetupMode(null);
+      
+      // Clear invite details
+      setInviteToken(null);
+      setInviteSecret(null);
+      setInviteDetails(null);
+      setSetupMode(null);
+      
+      // Clean query string / hash
       window.location.hash = '';
+      
+      // Select the joined document
       handleSelectDoc(parsed.docId);
       showToast('Joined team successfully!');
-    } catch {
+    } catch (err) {
       showToast('Failed to join team: cryptographic key derivation failed.');
     }
   };
 
-  // ─── 16. Leave Team ─────────────────────────────────────────────────────
-
+  // 12. Leave current team / Reset
   const handleLeaveTeam = () => {
     if (confirm('Leave this team workspace? You will lose access to its E2EE keys locally.')) {
       cleanupProvider();
@@ -415,20 +390,17 @@ function App() {
     }
   };
 
-  // ─── Derived state ───────────────────────────────────────────────────────
+  // 13. Map peer status for Sidebar display
+  const activePeersList = providerStatus.activePeers.map(peerId => {
+    return {
+      id: peerId,
+      name: peerId.substring(5, 10), // Simple fallback or use awareness username
+      color: '#c084fc',
+      online: true
+    };
+  });
 
-  const activePeersList = providerStatus.activePeers.map(peerId => ({
-    id: peerId,
-    name: peerId.substring(5, 10),
-    color: '#0066ff',
-    online: true
-  }));
-
-  const currentDoc = documents.find(d => d.id === currentDocId);
-  const currentDocTags = currentDoc?.tags || [];
-
-  // ─── Setup Screen ───────────────────────────────────────────────────────
-
+  // Render Setup Screen
   if (setupMode || !activeTeam) {
     return (
       <div className="setup-screen">
@@ -456,14 +428,14 @@ function App() {
 
             {setupMode === 'join' && inviteDetails ? (
               <div style={{ marginTop: '10px' }}>
-                <div style={{ padding: '12px', backgroundColor: 'var(--accent-light)', border: '1px solid rgba(0,102,255,0.2)', borderRadius: '8px', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600, color: 'var(--accent-color)', display: 'block', marginBottom: '4px' }}>Invitation Details</span>
-                  <p style={{ fontSize: '13px', fontWeight: 600 }}>Joining: {inviteDetails.docTitle || 'Untitled'}</p>
+                <div style={{ padding: '12px', backgroundColor: 'var(--accent-light)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 600, color: 'var(--accent-hover)', display: 'block', marginBottom: '4px' }}>Invitation Details</span>
+                  <p style={{ fontSize: '13px', fontWeight: 600 }}>Joining document: <span style={{ color: '#fff' }}>{inviteDetails.docTitle || 'Untitled'}</span></p>
                   <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Team ID: {inviteDetails.teamId}</p>
                 </div>
                 <button type="submit" className="btn-submit">
                   <UserPlus size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-                  Accept Invite &amp; Sync
+                  Accept Invite & Sync
                 </button>
               </div>
             ) : (
@@ -494,13 +466,16 @@ function App() {
                 </button>
               </>
             )}
-
+            
             {teams.length > 0 && (
-              <button
-                type="button"
-                className="btn-secondary"
-                style={{ marginTop: '8px' }}
-                onClick={() => { setActiveTeam(teams[0]); setSetupMode(null); }}
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                style={{ marginTop: '8px' }} 
+                onClick={() => {
+                  setActiveTeam(teams[0]);
+                  setSetupMode(null);
+                }}
               >
                 Back to Workspace
               </button>
@@ -512,126 +487,79 @@ function App() {
     );
   }
 
-  // ─── Main Workspace ─────────────────────────────────────────────────────
+  // Render Main Workspace
+  const currentDoc = documents.find(d => d.id === currentDocId);
 
   return (
     <div className="app-container">
       <Sidebar
         documents={documents}
         currentDocId={currentDocId}
-        folders={folders}
-        searchQuery={searchQuery}
-        onSearch={setSearchQuery}
         onSelectDoc={handleSelectDoc}
         onCreateDoc={() => handleCreateDoc()}
         onDeleteDoc={handleDeleteDoc}
-        onCreateFolder={handleCreateFolder}
-        onDeleteFolder={handleDeleteFolder}
-        onTogglePin={handleTogglePin}
-        onToggleLock={handleToggleLock}
-        onMoveDoc={handleMoveDoc}
-        onOpenTemplates={() => setIsTemplatesOpen(true)}
-        onAddTag={handleAddTag}
-        onRemoveTag={handleRemoveTag}
-        currentDocTags={currentDocTags}
         teamName={activeTeam.teamName}
         peers={activePeersList}
         onLeaveTeam={handleLeaveTeam}
       />
 
-      <main className={`main-content ${isCommentsOpen ? 'with-comments-panel' : ''}`}>
+      <main className="main-content">
         <header className="workspace-header">
           <span className="header-doc-title">
             {currentDoc?.title || 'No Document Selected'}
-            {currentDoc?.isLocked && <Lock size={13} style={{ marginLeft: '8px', color: 'var(--error-color)', verticalAlign: 'middle' }} />}
           </span>
           <div className="workspace-actions">
-            {currentDocId && currentDoc && (
-              <>
-                <button
-                  onClick={handleToggleLock.bind(null, currentDocId)}
-                  className="btn-invite-outline"
-                  title={currentDoc.isLocked ? 'Unlock document' : 'Lock document'}
-                >
-                  {currentDoc.isLocked ? <Unlock size={14} /> : <Lock size={14} />}
-                  {currentDoc.isLocked ? 'Unlock' : 'Lock'}
-                </button>
-                <button
-                  onClick={() => setIsAuditOpen(true)}
-                  className="btn-invite-outline"
-                  title="View audit log"
-                >
-                  <ClipboardList size={14} />
-                  Audit
-                </button>
-                <button
-                  onClick={() => setIsCommentsOpen(v => !v)}
-                  className={`btn-invite-outline ${isCommentsOpen ? 'active' : ''}`}
-                  title="Toggle comments"
-                >
-                  <MessageSquare size={14} />
-                  Comments
-                </button>
-                <ExportMenu docTitle={currentDoc.title} />
-                <button onClick={() => setIsInviteOpen(true)} className="btn-invite-outline">
-                  <Share2 size={14} />
-                  Share
-                </button>
-              </>
+            {currentDocId && (
+              <button onClick={() => setIsInviteOpen(true)} className="btn-invite-outline">
+                <Share2 size={14} />
+                Share
+              </button>
             )}
           </div>
         </header>
 
-        <div className="editor-and-comments">
-          <div className="editor-area">
-            {currentDocId && currentYDoc && currentProvider ? (
-              <Editor
-                doc={currentYDoc}
-                provider={currentProvider}
-                username={username}
-                onTitleChange={handleTitleChange}
-                isLocked={currentDoc?.isLocked}
-                lockedBy={currentDoc?.lockedBy}
-              />
-            ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                Select or create a document to start writing.
-              </div>
-            )}
+        {currentDocId && currentYDoc && currentProvider ? (
+          <Editor
+            doc={currentYDoc}
+            provider={currentProvider}
+            username={username}
+            onTitleChange={handleTitleChange}
+          />
+        ) : (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+            Select or create a document to start writing.
           </div>
-
-          {isCommentsOpen && currentDocId && (
-            <CommentsPanel
-              docId={currentDocId}
-              teamId={activeTeam.teamId}
-              username={username}
-              onClose={() => setIsCommentsOpen(false)}
-              onCommentAdded={handleCommentAdded}
-            />
-          )}
-        </div>
+        )}
 
         <footer className="status-bar">
           <div className="status-left">
             <span className="status-indicator success">
               <ShieldCheck size={14} />
-              Encrypted (AES-GCM)
+              🔒 Encrypted (AES-GCM)
             </span>
           </div>
           <div className="status-right">
             <span className={`status-indicator ${providerStatus.connected ? 'success' : 'warning'}`}>
               {providerStatus.connected ? (
-                <><Wifi size={14} />Synced</>
+                <>
+                  <Wifi size={14} />
+                  ⚡ Synced
+                </>
               ) : (
-                <><WifiOff size={14} />Offline</>
+                <>
+                  <WifiOff size={14} />
+                  📴 Offline
+                </>
               )}
             </span>
-            <span>Peers: <strong>{providerStatus.peerCount}</strong></span>
+            <span>
+              Connected Peers: <strong style={{ color: '#fff' }}>{providerStatus.peerCount}</strong>
+            </span>
           </div>
         </footer>
       </main>
 
-      {/* Modals */}
+      {/* Invite Share Modal */}
       {currentDoc && (
         <InviteModal
           isOpen={isInviteOpen}
@@ -643,21 +571,7 @@ function App() {
         />
       )}
 
-      {isAuditOpen && currentDoc && (
-        <AuditLogModal
-          docId={currentDoc.id}
-          docTitle={currentDoc.title}
-          onClose={() => setIsAuditOpen(false)}
-        />
-      )}
-
-      {isTemplatesOpen && (
-        <TemplatesModal
-          onClose={() => setIsTemplatesOpen(false)}
-          onSelectTemplate={handleSelectTemplate}
-        />
-      )}
-
+      {/* Toast notifications */}
       {toastMessage && <div className="toast-notification">{toastMessage}</div>}
     </div>
   );
