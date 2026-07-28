@@ -8,7 +8,6 @@ export async function deriveKey(secret: string, saltString: string = 'vaultdocs-
   const secretBytes = encoder.encode(secret);
   const saltBytes = encoder.encode(saltString);
 
-  // Use SubtleCrypto to derive a 256-bit PBKDF2 key
   const baseKey = await window.crypto.subtle.importKey(
     'raw',
     secretBytes,
@@ -35,6 +34,39 @@ export async function deriveKey(secret: string, saltString: string = 'vaultdocs-
 }
 
 /**
+ * Derive a key using raw salt bytes (for invite tokens).
+ */
+export async function deriveKeyWithSalt(secret: string, salt: Uint8Array): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const secretBytes = encoder.encode(secret);
+
+  const baseKey = await window.crypto.subtle.importKey(
+    'raw',
+    secretBytes,
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits', 'deriveKey']
+  );
+
+  const saltCopy = new Uint8Array(salt);
+  const derivedKey = await window.crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: saltCopy,
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+
+  const rawKey = await window.crypto.subtle.exportKey('raw', derivedKey);
+  return new Uint8Array(rawKey);
+}
+
+/**
  * Encrypts a plaintext Uint8Array with a key using AES-256-GCM.
  * Prepend the 12-byte random nonce to the ciphertext.
  */
@@ -43,7 +75,6 @@ export function encryptUpdate(plaintext: Uint8Array, key: Uint8Array): Uint8Arra
   const cipher = gcm(key, nonce);
   const ciphertext = cipher.encrypt(plaintext);
 
-  // Concatenate nonce + ciphertext
   const result = new Uint8Array(nonce.length + ciphertext.length);
   result.set(nonce, 0);
   result.set(ciphertext, nonce.length);
@@ -96,71 +127,84 @@ export interface InviteToken {
   docId: string;
   docTitle: string;
   teamId: string;
-  encryptedKey: string; // Base64 of encrypted team key
-  salt: string;
+  encryptedKey: string; // Base64 of encrypted team key (GCM ciphertext only for v2)
+  salt: string; // Base64: v1 = GCM nonce; v2 = PBKDF2 salt
+  nonce?: string; // Base64 GCM nonce (v2 only)
+  v?: number;
 }
 
 /**
- * Creates a sharing invite link.
+ * Creates a sharing invite token (async — uses PBKDF2 to wrap the team key).
  */
-export function createInviteToken(
+export async function createInviteToken(
   docId: string,
   docTitle: string,
   teamId: string,
   teamKey: Uint8Array,
   inviteSecret: string
-): string {
-  const encoder = new TextEncoder();
-  const secretBytes = encoder.encode(inviteSecret);
+): Promise<string> {
+  const salt = window.crypto.getRandomValues(new Uint8Array(16));
   const nonce = window.crypto.getRandomValues(new Uint8Array(12));
-  
-  // Use a simple PBKDF2 hash of secretBytes as key for GCM
-  const cipherKey = new Uint8Array(32);
-  // Simple key stuffing for the invite secret key
-  for (let i = 0; i < 32; i++) {
-    cipherKey[i] = secretBytes[i % secretBytes.length] ^ i;
-  }
-  
+  const cipherKey = await deriveKeyWithSalt(inviteSecret, salt);
   const cipher = gcm(cipherKey, nonce);
   const encrypted = cipher.encrypt(teamKey);
-  
+
   const tokenPayload: InviteToken = {
     docId,
     docTitle,
     teamId,
     encryptedKey: bytesToBase64(encrypted),
-    salt: bytesToBase64(nonce)
+    salt: bytesToBase64(salt),
+    nonce: bytesToBase64(nonce),
+    v: 2
   };
-  
+
   return btoa(JSON.stringify(tokenPayload));
 }
 
 /**
- * Parses and decrypts a sharing invite token.
+ * Legacy XOR key stuffing used by v1 invite tokens.
  */
-export function parseInviteToken(tokenStr: string, inviteSecret: string): {
-  docId: string;
-  docTitle: string;
-  teamId: string;
-  teamKey: Uint8Array;
-} {
-  const decoded = atob(tokenStr);
-  const tokenPayload: InviteToken = JSON.parse(decoded);
-  
-  const encoder = new TextEncoder();
-  const secretBytes = encoder.encode(inviteSecret);
-  
+function legacyInviteCipherKey(inviteSecret: string): Uint8Array {
+  const secretBytes = new TextEncoder().encode(inviteSecret);
   const cipherKey = new Uint8Array(32);
   for (let i = 0; i < 32; i++) {
     cipherKey[i] = secretBytes[i % secretBytes.length] ^ i;
   }
-  
-  const nonce = base64ToBytes(tokenPayload.salt);
-  const encryptedKeyBytes = base64ToBytes(tokenPayload.encryptedKey);
-  
-  const cipher = gcm(cipherKey, nonce);
-  const teamKey = cipher.decrypt(encryptedKeyBytes);
-  
+  return cipherKey;
+}
+
+/**
+ * Parses and decrypts a sharing invite token.
+ * Supports v2 (PBKDF2) and legacy v1 (XOR stuffing) tokens.
+ */
+export async function parseInviteToken(tokenStr: string, inviteSecret: string): Promise<{
+  docId: string;
+  docTitle: string;
+  teamId: string;
+  teamKey: Uint8Array;
+}> {
+  const decoded = atob(tokenStr);
+  const tokenPayload: InviteToken = JSON.parse(decoded);
+
+  let teamKey: Uint8Array;
+
+  if (tokenPayload.v === 2 && tokenPayload.nonce) {
+    const salt = base64ToBytes(tokenPayload.salt);
+    const nonce = base64ToBytes(tokenPayload.nonce);
+    const encryptedKeyBytes = base64ToBytes(tokenPayload.encryptedKey);
+    const cipherKey = await deriveKeyWithSalt(inviteSecret, salt);
+    const cipher = gcm(cipherKey, nonce);
+    teamKey = cipher.decrypt(encryptedKeyBytes);
+  } else {
+    // Legacy v1: salt field held the GCM nonce; weak XOR-derived key
+    const cipherKey = legacyInviteCipherKey(inviteSecret);
+    const nonce = base64ToBytes(tokenPayload.salt);
+    const encryptedKeyBytes = base64ToBytes(tokenPayload.encryptedKey);
+    const cipher = gcm(cipherKey, nonce);
+    teamKey = cipher.decrypt(encryptedKeyBytes);
+  }
+
   return {
     docId: tokenPayload.docId,
     docTitle: tokenPayload.docTitle,

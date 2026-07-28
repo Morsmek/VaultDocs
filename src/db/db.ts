@@ -122,6 +122,22 @@ export async function listLocalTeams(): Promise<LocalTeam[]> {
   return db.teams.toArray();
 }
 
+/**
+ * Removes a team and all local data associated with it (docs, folders, comments, audit).
+ */
+export async function leaveTeamAndWipeLocal(teamId: string): Promise<void> {
+  const docs = await db.documents.where('teamId').equals(teamId).toArray();
+  const docIds = docs.map((d) => d.id);
+
+  await db.documents.where('teamId').equals(teamId).delete();
+  await db.folders.where('teamId').equals(teamId).delete();
+  await db.auditLog.where('teamId').equals(teamId).delete();
+  for (const docId of docIds) {
+    await db.comments.where('docId').equals(docId).delete();
+  }
+  await db.teams.delete(teamId);
+}
+
 // ─── Folder Helpers ────────────────────────────────────────────────────────
 
 export async function createFolder(name: string, teamId: string): Promise<LocalFolder> {

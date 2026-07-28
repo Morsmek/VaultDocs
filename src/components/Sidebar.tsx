@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Users, LogOut, FolderPlus, LayoutTemplate, Tag, X } from 'lucide-react';
-import type { LocalDocument, LocalFolder } from '../db/db';
+import type { LocalDocument, LocalFolder, LocalTeam } from '../db/db';
 import { SearchBar } from './SearchBar';
 import { FolderTree } from './FolderTree';
 
@@ -23,6 +23,9 @@ interface SidebarProps {
   onRemoveTag: (docId: string, tag: string) => void;
   currentDocTags: string[];
   teamName: string;
+  teams: LocalTeam[];
+  activeTeamId: string;
+  onSwitchTeam: (teamId: string) => void;
   peers: { id: string; name: string; color: string; online: boolean }[];
   onLeaveTeam: () => void;
 }
@@ -46,6 +49,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRemoveTag,
   currentDocTags,
   teamName,
+  teams,
+  activeTeamId,
+  onSwitchTeam,
   peers,
   onLeaveTeam
 }) => {
@@ -133,7 +139,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Team name + document tree */}
       <div className="doc-list-section">
-        <h3 className="doc-list-title">{teamName || 'Local Workspace'}</h3>
+        {teams.length > 1 ? (
+          <select
+            className="team-switcher"
+            value={activeTeamId}
+            onChange={(e) => onSwitchTeam(e.target.value)}
+            title="Switch workspace"
+            aria-label="Switch workspace"
+          >
+            {teams.map((t) => (
+              <option key={t.teamId} value={t.teamId}>
+                {t.teamName}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <h3 className="doc-list-title">{teamName || 'Local Workspace'}</h3>
+        )}
         <FolderTree
           folders={folders}
           documents={documents}

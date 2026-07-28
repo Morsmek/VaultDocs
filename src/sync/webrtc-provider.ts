@@ -3,10 +3,51 @@ import * as awarenessProtocol from 'y-protocols/awareness.js';
 import { encryptUpdate, decryptUpdate, bytesToBase64, base64ToBytes } from '../crypto/crypto';
 
 export interface ProviderStatus {
+  /** WebSocket signaling channel is open */
   connected: boolean;
+  /** At least one peer data channel is open and initial sync completed */
   synced: boolean;
   peerCount: number;
   activePeers: string[];
+  /** Human-readable connection phase */
+  phase: 'offline' | 'connecting' | 'online' | 'synced';
+  lastError?: string;
+}
+
+export interface PeerUser {
+  peerId: string;
+  name: string;
+  color: string;
+}
+
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' }
+  ];
+
+  const turnUrl = import.meta.env.VITE_TURN_URL as string | undefined;
+  if (turnUrl) {
+    servers.push({
+      urls: turnUrl,
+      username: (import.meta.env.VITE_TURN_USERNAME as string) || undefined,
+      credential: (import.meta.env.VITE_TURN_CREDENTIAL as string) || undefined
+    });
+  }
+
+  return servers;
+}
+
+function getSignalingUrl(): string {
+  return (import.meta.env.VITE_SIGNALING_URL as string) || 'wss://signaling.yjs.dev';
+}
+
+/**
+ * Room name: team + doc so rooms aren't trivially guessable as bare doc-ids.
+ */
+export function buildRoomName(teamId: string, docId: string): string {
+  return `vd:${teamId}:${docId}`;
 }
 
 export class EncryptedWebrtcProvider {
@@ -25,14 +66,13 @@ export class EncryptedWebrtcProvider {
   }>();
   
   private statusListeners = new Set<(status: ProviderStatus) => void>();
+  private peerUserListeners = new Set<(peers: PeerUser[]) => void>();
   private wsConnected = false;
   private destroyed = false;
-  
-  private iceServers = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
-  ];
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private lastError?: string;
+  private iceServers = buildIceServers();
 
   constructor(doc: Y.Doc, roomName: string, teamKey: Uint8Array, username: string) {
     this.doc = doc;
@@ -41,16 +81,11 @@ export class EncryptedWebrtcProvider {
     this.username = username;
     this.awareness = new awarenessProtocol.Awareness(doc);
     
-    // Generate a random Peer ID
     this.myPeerId = 'peer-' + Math.random().toString(36).substring(2, 11);
     
-    // Bind doc updates
     this.doc.on('update', this.onDocUpdate);
-    
-    // Bind awareness updates
     this.awareness.on('update', this.onAwarenessUpdate);
     
-    // Set local awareness state
     this.awareness.setLocalState({
       user: {
         name: username,
@@ -58,15 +93,10 @@ export class EncryptedWebrtcProvider {
       }
     });
 
-    // Initialize WebSockets signaling
     this.connectSignaling();
     
-    // Send periodic pings to keep signaling channel alive and discover peers
-    const interval = setInterval(() => {
-      if (this.destroyed) {
-        clearInterval(interval);
-        return;
-      }
+    this.pingInterval = setInterval(() => {
+      if (this.destroyed) return;
       this.broadcastPing();
     }, 10000);
   }
@@ -82,37 +112,80 @@ export class EncryptedWebrtcProvider {
     return () => this.statusListeners.delete(cb);
   }
 
+  public onPeerUsers(cb: (peers: PeerUser[]) => void) {
+    this.peerUserListeners.add(cb);
+    this.emitPeerUsers();
+    return () => this.peerUserListeners.delete(cb);
+  }
+
+  private emitPeerUsers() {
+    const states = this.awareness.getStates();
+    const users: PeerUser[] = [];
+    states.forEach((state, clientId) => {
+      if (clientId === this.awareness.clientID) return;
+      const user = state?.user as { name?: string; color?: string } | undefined;
+      if (!user) return;
+      users.push({
+        peerId: String(clientId),
+        name: user.name || 'Peer',
+        color: user.color || '#0066ff'
+      });
+    });
+    this.peerUserListeners.forEach((listener) => listener(users));
+  }
+
   private emitStatus() {
     const activePeers = Array.from(this.peers.entries())
-      .filter(([_, info]) => info.dc && info.dc.readyState === 'open')
+      .filter(([, info]) => info.dc && info.dc.readyState === 'open')
       .map(([peerId]) => peerId);
+
+    const allSynced =
+      activePeers.length > 0 &&
+      Array.from(this.peers.values()).every((p) => !p.dc || p.dc.readyState !== 'open' || p.synced);
+
+    let phase: ProviderStatus['phase'] = 'offline';
+    if (this.wsConnected && activePeers.length === 0) phase = 'online';
+    else if (this.wsConnected && allSynced) phase = 'synced';
+    else if (this.wsConnected || activePeers.length > 0) phase = 'connecting';
+    else if (!this.wsConnected && !this.destroyed) phase = 'connecting';
 
     const status: ProviderStatus = {
       connected: this.wsConnected,
-      synced: activePeers.length === 0 || Array.from(this.peers.values()).every(p => !p.dc || p.synced),
+      synced: allSynced || activePeers.length === 0,
       peerCount: activePeers.length,
-      activePeers
+      activePeers,
+      phase: this.wsConnected ? (allSynced && activePeers.length > 0 ? 'synced' : activePeers.length > 0 ? 'connecting' : 'online') : phase,
+      lastError: this.lastError
     };
     
-    this.statusListeners.forEach(listener => listener(status));
+    this.statusListeners.forEach((listener) => listener(status));
   }
 
   private connectSignaling() {
     if (this.destroyed) return;
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
     
-    this.ws = new WebSocket('wss://signaling.yjs.dev');
+    try {
+      this.ws = new WebSocket(getSignalingUrl());
+    } catch (e) {
+      this.lastError = 'Failed to open signaling WebSocket';
+      this.emitStatus();
+      this.scheduleReconnect();
+      return;
+    }
     
     this.ws.onopen = () => {
       this.wsConnected = true;
+      this.lastError = undefined;
       this.emitStatus();
       
-      // Subscribe to room
       this.sendSignaling({
         type: 'subscribe',
         topics: [this.roomName]
       });
       
-      // Announce presence
       this.broadcastPing();
     };
     
@@ -120,36 +193,48 @@ export class EncryptedWebrtcProvider {
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'publish' && message.topic === this.roomName) {
-          // Decrypt payload
           const encryptedBytes = base64ToBytes(message.data);
           const decryptedBytes = decryptUpdate(encryptedBytes, this.teamKey);
           const signalData = JSON.parse(new TextDecoder().decode(decryptedBytes));
           
-          // Ignore our own messages
           if (signalData.from === this.myPeerId) return;
           
           await this.handleSignal(signalData);
         }
-      } catch (err) {
+      } catch {
         // Suppress decryption errors for unrelated rooms or invalid keys
       }
     };
     
+    this.ws.onerror = () => {
+      this.lastError = 'Signaling connection error (check network / VITE_SIGNALING_URL)';
+      this.emitStatus();
+    };
+
     this.ws.onclose = () => {
       this.wsConnected = false;
+      this.ws = null;
       this.emitStatus();
-      // Reconnect
-      setTimeout(() => this.connectSignaling(), 5000);
+      this.scheduleReconnect();
     };
   }
 
-  private sendSignaling(msg: any) {
+  private scheduleReconnect() {
+    if (this.destroyed) return;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connectSignaling();
+    }, 5000);
+  }
+
+  private sendSignaling(msg: Record<string, unknown>) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }
   }
 
-  private encryptAndPublish(payload: any) {
+  private encryptAndPublish(payload: Record<string, unknown>) {
     try {
       payload.from = this.myPeerId;
       const text = JSON.stringify(payload);
@@ -171,16 +256,19 @@ export class EncryptedWebrtcProvider {
     this.encryptAndPublish({ type: 'ping' });
   }
 
-  private async handleSignal(signal: any) {
+  private async handleSignal(signal: {
+    from: string;
+    type: string;
+    to?: string;
+    sdp?: RTCSessionDescriptionInit;
+    candidate?: RTCIceCandidateInit;
+  }) {
     const { from, type, to } = signal;
     
-    // If the signal is directed to someone else, ignore
     if (to && to !== this.myPeerId) return;
     
     if (type === 'ping') {
-      // Respond with pong
       this.encryptAndPublish({ type: 'pong', to: from });
-      // Initiate WebRTC connection if we are the initiator (smaller peerId)
       if (this.myPeerId < from) {
         await this.initiatePeerConnection(from);
       }
@@ -188,23 +276,31 @@ export class EncryptedWebrtcProvider {
       if (this.myPeerId < from) {
         await this.initiatePeerConnection(from);
       }
-    } else if (type === 'offer') {
+    } else if (type === 'offer' && signal.sdp) {
       await this.handleOffer(from, signal.sdp);
-    } else if (type === 'answer') {
+    } else if (type === 'answer' && signal.sdp) {
       const peer = this.peers.get(from);
       if (peer) {
-        await peer.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        try {
+          await peer.pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        } catch (e) {
+          console.warn('setRemoteDescription(answer) failed', e);
+        }
       }
-    } else if (type === 'ice-candidate') {
+    } else if (type === 'ice-candidate' && signal.candidate) {
       const peer = this.peers.get(from);
-      if (peer && signal.candidate) {
-        await peer.pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+      if (peer) {
+        try {
+          await peer.pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        } catch {
+          // Candidate may arrive before remote description
+        }
       }
     }
   }
 
   private async initiatePeerConnection(peerId: string) {
-    if (this.peers.has(peerId)) return;
+    if (this.peers.has(peerId) || this.destroyed) return;
     
     const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     const dc = pc.createDataChannel('yjs-sync');
@@ -215,19 +311,24 @@ export class EncryptedWebrtcProvider {
     this.setupDataChannel(peerId, dc);
     this.setupPeerConnection(peerId, pc);
     
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    
-    this.encryptAndPublish({
-      type: 'offer',
-      to: peerId,
-      sdp: offer
-    });
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      
+      this.encryptAndPublish({
+        type: 'offer',
+        to: peerId,
+        sdp: offer
+      });
+    } catch (e) {
+      console.error('Failed to create offer', e);
+      this.cleanupPeer(peerId);
+    }
   }
 
   private async handleOffer(peerId: string, sdp: RTCSessionDescriptionInit) {
+    if (this.destroyed) return;
     if (this.peers.has(peerId)) {
-      // Peer connection already exists, clean it up
       this.cleanupPeer(peerId);
     }
     
@@ -242,15 +343,20 @@ export class EncryptedWebrtcProvider {
     
     this.setupPeerConnection(peerId, pc);
     
-    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    
-    this.encryptAndPublish({
-      type: 'answer',
-      to: peerId,
-      sdp: answer
-    });
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      
+      this.encryptAndPublish({
+        type: 'answer',
+        to: peerId,
+        sdp: answer
+      });
+    } catch (e) {
+      console.error('Failed to handle offer', e);
+      this.cleanupPeer(peerId);
+    }
   }
 
   private setupPeerConnection(peerId: string, pc: RTCPeerConnection) {
@@ -259,12 +365,16 @@ export class EncryptedWebrtcProvider {
         this.encryptAndPublish({
           type: 'ice-candidate',
           to: peerId,
-          candidate: event.candidate
+          candidate: event.candidate.toJSON()
         });
       }
     };
     
     pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed') {
+        this.lastError = 'WebRTC failed (NAT/firewall). Configure VITE_TURN_URL for restrictive networks.';
+        this.emitStatus();
+      }
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
         this.cleanupPeer(peerId);
       }
@@ -277,25 +387,31 @@ export class EncryptedWebrtcProvider {
     dc.onopen = () => {
       this.emitStatus();
       
-      // Start Yjs document synchronization
-      // Send our state vector so the peer knows what updates we have
       const stateVector = Y.encodeStateVector(this.doc);
       this.sendToPeer(peerId, {
         type: 'yjs-sync-step-1',
         sv: bytesToBase64(stateVector)
       });
       
-      // Send our current awareness state
+      // Full state as fallback so late joiners always get content
+      const fullState = Y.encodeStateAsUpdate(this.doc);
+      const encryptedFull = encryptUpdate(fullState, this.teamKey);
+      this.sendToPeer(peerId, {
+        type: 'yjs-sync-step-2',
+        update: bytesToBase64(encryptedFull)
+      });
+
       const localAwareness = awarenessProtocol.encodeAwarenessUpdate(this.awareness, [this.awareness.clientID]);
+      const encryptedAwareness = encryptUpdate(localAwareness, this.teamKey);
       this.sendToPeer(peerId, {
         type: 'awareness-update',
-        data: bytesToBase64(localAwareness)
+        data: bytesToBase64(encryptedAwareness)
       });
     };
     
     dc.onmessage = (event) => {
       try {
-        const payload = JSON.parse(event.data);
+        const payload = JSON.parse(event.data as string);
         this.handlePeerMessage(peerId, payload);
       } catch (err) {
         console.error('Error handling data channel message', err);
@@ -307,21 +423,24 @@ export class EncryptedWebrtcProvider {
     };
   }
 
-  private sendToPeer(peerId: string, payload: any) {
+  private sendToPeer(peerId: string, payload: Record<string, unknown>) {
     const peer = this.peers.get(peerId);
     if (peer && peer.dc && peer.dc.readyState === 'open') {
       peer.dc.send(JSON.stringify(payload));
     }
   }
 
-  private handlePeerMessage(peerId: string, payload: any) {
+  private handlePeerMessage(peerId: string, payload: {
+    type: string;
+    sv?: string;
+    update?: string;
+    data?: string;
+  }) {
     const { type } = payload;
     
-    if (type === 'yjs-sync-step-1') {
+    if (type === 'yjs-sync-step-1' && payload.sv) {
       const remoteSv = base64ToBytes(payload.sv);
-      // Calculate changes the remote peer is missing
       const update = Y.encodeStateAsUpdate(this.doc, remoteSv);
-      // Send them to the remote peer
       const encryptedUpdate = encryptUpdate(update, this.teamKey);
       
       this.sendToPeer(peerId, {
@@ -329,13 +448,12 @@ export class EncryptedWebrtcProvider {
         update: bytesToBase64(encryptedUpdate)
       });
       
-      // Also request their update by sending our state vector
       const mySv = Y.encodeStateVector(this.doc);
       this.sendToPeer(peerId, {
         type: 'yjs-sync-step-1-reply',
         sv: bytesToBase64(mySv)
       });
-    } else if (type === 'yjs-sync-step-1-reply') {
+    } else if (type === 'yjs-sync-step-1-reply' && payload.sv) {
       const remoteSv = base64ToBytes(payload.sv);
       const update = Y.encodeStateAsUpdate(this.doc, remoteSv);
       const encryptedUpdate = encryptUpdate(update, this.teamKey);
@@ -344,11 +462,10 @@ export class EncryptedWebrtcProvider {
         type: 'yjs-sync-step-2',
         update: bytesToBase64(encryptedUpdate)
       });
-    } else if (type === 'yjs-sync-step-2') {
+    } else if (type === 'yjs-sync-step-2' && payload.update) {
       const encryptedUpdate = base64ToBytes(payload.update);
       const decryptedUpdate = decryptUpdate(encryptedUpdate, this.teamKey);
       
-      // Apply update locally, originating from this provider to prevent loops
       Y.applyUpdate(this.doc, decryptedUpdate, this);
       
       const peer = this.peers.get(peerId);
@@ -356,27 +473,30 @@ export class EncryptedWebrtcProvider {
         peer.synced = true;
         this.emitStatus();
       }
-    } else if (type === 'yjs-update') {
+    } else if (type === 'yjs-update' && payload.update) {
       const encryptedUpdate = base64ToBytes(payload.update);
       const decryptedUpdate = decryptUpdate(encryptedUpdate, this.teamKey);
       
       Y.applyUpdate(this.doc, decryptedUpdate, this);
-    } else if (type === 'awareness-update') {
-      const encryptedAwareness = base64ToBytes(payload.data);
-      const decryptedAwareness = decryptUpdate(encryptedAwareness, this.teamKey);
-      
-      awarenessProtocol.applyAwarenessUpdate(this.awareness, decryptedAwareness, peerId);
+    } else if (type === 'awareness-update' && payload.data) {
+      try {
+        const encryptedAwareness = base64ToBytes(payload.data);
+        const decryptedAwareness = decryptUpdate(encryptedAwareness, this.teamKey);
+        
+        awarenessProtocol.applyAwarenessUpdate(this.awareness, decryptedAwareness, peerId);
+        this.emitPeerUsers();
+      } catch {
+        // Ignore bad awareness payloads
+      }
     }
   }
 
-  private onDocUpdate = (update: Uint8Array, origin: any) => {
-    if (origin === this) return; // Ignore updates that came from this provider
+  private onDocUpdate = (update: Uint8Array, origin: unknown) => {
+    if (origin === this) return;
     
-    // Encrypt the update
     const encrypted = encryptUpdate(update, this.teamKey);
     const base64 = bytesToBase64(encrypted);
     
-    // Broadcast to all connected WebRTC peers
     for (const [peerId, peer] of this.peers.entries()) {
       if (peer.dc && peer.dc.readyState === 'open') {
         this.sendToPeer(peerId, {
@@ -387,21 +507,32 @@ export class EncryptedWebrtcProvider {
     }
   };
 
-  private onAwarenessUpdate = (_: any, origin: any) => {
-    if (origin === 'local') {
-      // Encode local awareness changes
-      const update = awarenessProtocol.encodeAwarenessUpdate(this.awareness, [this.awareness.clientID]);
-      const encrypted = encryptUpdate(update, this.teamKey);
-      const base64 = bytesToBase64(encrypted);
-      
-      // Broadcast awareness update
-      for (const [peerId, peer] of this.peers.entries()) {
-        if (peer.dc && peer.dc.readyState === 'open') {
-          this.sendToPeer(peerId, {
-            type: 'awareness-update',
-            data: base64
-          });
+  private onAwarenessUpdate = (
+    { added, updated, removed }: { added: number[]; updated: number[]; removed: number[] },
+    origin: unknown
+  ) => {
+    this.emitPeerUsers();
+
+    const changedClients = added.concat(updated).concat(removed);
+    const includesLocal = changedClients.includes(this.awareness.clientID);
+
+    // y-protocols emits origin 'local' for setLocalState; also cover clientID in changed set
+    if (origin === 'local' || (includesLocal && origin !== this)) {
+      try {
+        const update = awarenessProtocol.encodeAwarenessUpdate(this.awareness, [this.awareness.clientID]);
+        const encrypted = encryptUpdate(update, this.teamKey);
+        const base64 = bytesToBase64(encrypted);
+
+        for (const [peerId, peer] of this.peers.entries()) {
+          if (peer.dc && peer.dc.readyState === 'open') {
+            this.sendToPeer(peerId, {
+              type: 'awareness-update',
+              data: base64
+            });
+          }
         }
+      } catch {
+        // ignore
       }
     }
   };
@@ -412,33 +543,54 @@ export class EncryptedWebrtcProvider {
       try {
         peer.dc?.close();
         peer.pc.close();
-      } catch (e) {}
+      } catch {
+        // ignore
+      }
       this.peers.delete(peerId);
-      
-      // Clean up remote awareness state for this client
-      //awarenessProtocol.removeAwarenessStates(this.awareness, [peerId], this);
-      
       this.emitStatus();
+      this.emitPeerUsers();
     }
   }
 
   public destroy() {
     this.destroyed = true;
     
-    // Unbind listeners
     this.doc.off('update', this.onDocUpdate);
     this.awareness.off('update', this.onAwarenessUpdate);
-    
-    // Close signaling WS
-    if (this.ws) {
-      this.ws.close();
+
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
     
-    // Close all peer connections
-    for (const peerId of this.peers.keys()) {
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      try {
+        this.ws.close();
+      } catch {
+        // ignore
+      }
+      this.ws = null;
+    }
+    
+    for (const peerId of [...this.peers.keys()]) {
       this.cleanupPeer(peerId);
     }
     
+    try {
+      this.awareness.setLocalState(null);
+      this.awareness.destroy();
+    } catch {
+      // ignore
+    }
+
     this.statusListeners.clear();
+    this.peerUserListeners.clear();
   }
 }

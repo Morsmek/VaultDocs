@@ -143,6 +143,33 @@ body {
   padding: 0 8px 8px;
 }
 
+.team-switcher {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.team-switcher:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+@keyframes vaultdocs-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: vaultdocs-spin 1s linear infinite;
+}
+
 .doc-list {
   list-style: none;
   display: flex;
