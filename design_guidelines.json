@@ -1,0 +1,105 @@
+{
+  "app_name": "VaultDocs",
+  "theme_strategy": "Strict Dark Mode to inherently communicate stealth, zero-knowledge, and secure local environment.",
+  "emotional_tone": "Technical Brutalism, Authority, Stealth, Minimalist",
+  "typography": {
+    "strategy": "Swiss Brutalist meets Terminal",
+    "headings": "Azeret Mono (font-mono). Avoid regular weights, use font-light or font-black.",
+    "body": "IBM Plex Sans (font-sans). Clean, highly legible UI font.",
+    "rules": "H1 max text-5xl tracking-tighter. Overlines MUST be Uppercase + tracking-[0.2em]."
+  },
+  "colors": {
+    "archetype": "ARCHETYPE 4 & 7 Hybrid (Swiss High-Contrast + Cyber Security)",
+    "backgrounds": {
+      "base": "#050505",
+      "surface": "#0A0A0A",
+      "surface_elevated": "#141414"
+    },
+    "accents": {
+      "primary": "#00E5FF",
+      "warning": "#FF3B30"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "muted": "#52525B"
+    },
+    "borders": "#27272A"
+  },
+  "visual enhancers": {
+    "surfaces": "GRID BORDERS (The 'Technical' Look). Expose the skeleton. border-collapse layouts with 1px border-border/40 lines.",
+    "corners": "Hard edges. rounded-none on all components to enforce Brutalist function-first design.",
+    "textures": "Subtle noise overlay (bg-black/50 + svg noise filter) on the unlock screen to prevent digital flatness.",
+    "empty_states": "ASCII Art for locks or empty folders. E.g., [x] EMPTY VAULT. Keeps the developer/terminal aesthetic."
+  },
+  "component name": [
+    "VaultUnlock",
+    "SidebarNav",
+    "DocumentGrid",
+    "DocumentList",
+    "UploadZone",
+    "SearchBar"
+  ],
+  "grids": {
+    "dashboard": "MODE B (High Density Grid). Base Grid: grid-cols-1 md:grid-cols-4. Tight gap-4. Every pixel utilized. border-collapse styling.",
+    "document_grid": "Grid items must have 1px solid border. Hover states lift slightly and border shifts to cyan."
+  },
+  "layouts": {
+    "app_shell": "Left Sidebar (w-64) + Main Content. h-screen overflow-hidden. Inner scrolling for main content.",
+    "header": "Solid #0A0A0A background (NO transparency). Bottom border to cleanly cut off scrolling content.",
+    "unlock_screen": "Flex center, minimal UI, focused on the central passphrase input. No generic login card. Just a stark terminal input.",
+    "padding": "Generous Spacing Philosophy. p-8 inside structural blocks."
+  },
+  "motion": {
+    "hover_states": "Crisp and sudden. transition: transform 0.1s ease, border-color 0.1s ease. No 'transition-all'.",
+    "unlock_sequence": "Fast 'decryption' glitch effect (staggered opacity or character scrambling) on successful passphrase before routing.",
+    "upload_drag": "Border dashes scale up slightly and pulse cyan when a file is hovered over the drop zone."
+  },
+  "accessibility": {
+    "contrast": "APCA validated. White on Void Black exceeds Lc 90. Cyan on Void Black exceeds Lc 75.",
+    "focus": "focus:outline-none focus:ring-1 focus:ring-[#00E5FF] focus:ring-offset-2 focus:ring-offset-[#050505].",
+    "data_testid": "ALL interactive elements MUST have data-testid attributes (e.g., data-testid='unlock-button')."
+  },
+  "media": {
+    "icons": "Phosphor Icons (@phosphor-icons/react). Use weight='duotone' for documents/folders to add technical depth.",
+    "images_strategy": "No standard photography needed for a secure vault. Pure UI, typography, and iconography."
+  },
+  "3d libraries": {
+    "usage": "Not recommended for this specific local utility, prioritizing speed and zero-knowledge footprint. Use CSS for 'decryption' text effects instead."
+  },
+  "image urls": {
+    "texture": {
+      "category": "Visual Enhancers",
+      "url": "",
+      "description": "Use CSS-based SVG noise filters rather than external images to keep the app 100% local."
+    }
+  },
+  "component_path": {
+    "ui": "/app/src/components/ui",
+    "features": "/app/src/components"
+  },
+  "instructions_to_main_agent": [
+    "Install required dependencies: yarn add @phosphor-icons/react lucide-react sonner",
+    "Ensure all components use .jsx / .js extensions, not .tsx.",
+    "Do not use transparent backgrounds for the header/search bar area if items scroll behind it; use solid #0A0A0A or #050505.",
+    "Build a Brutalist layout: remove all border-radius (rounded-none). Add explicit 1px borders (border-[#27272A]) to structure the sidebar, header, and grid items.",
+    "For the Unlock Screen, create a minimalist input field (border-b only) in the center of the screen, styled like a terminal prompt.",
+    "For the Document Grid, format items like file packets. Show metadata (size, type, date) explicitly in monospace font.",
+    "Ensure the Upload Drag & Drop zone uses a massive dashed border (border-dashed border-[#27272A]) that turns cyan on drag over.",
+    "Use ASCII art or purely typographic lock symbols for empty states.",
+    "Add explicit data-testid attributes to all buttons, inputs, and file items for automated testing."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "You MUST NOT apply universal transition. Eg: transition: all. Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, custom selection states, and loading animations separate good from extraordinary.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Use `sonner` for toasts, located in /app/src/components/ui/sonner.js."
+  ]
+}

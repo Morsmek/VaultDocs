@@ -309,11 +309,11 @@ function App() {
 
   // ─── 8. Title change ────────────────────────────────────────────────────
 
-  const handleTitleChange = async (newTitle: string) => {
+  const handleTitleChange = useCallback(async (newTitle: string) => {
     if (!currentDocId) return;
     await db.documents.update(currentDocId, { title: newTitle, updatedAt: Date.now() });
     setDocuments(prev => prev.map(d => d.id === currentDocId ? { ...d, title: newTitle, updatedAt: Date.now() } : d));
-  };
+  }, [currentDocId]);
 
   // ─── 9. Folder management ───────────────────────────────────────────────
 

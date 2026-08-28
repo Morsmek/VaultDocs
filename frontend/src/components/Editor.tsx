@@ -48,7 +48,7 @@ export const Editor: React.FC<EditorProps> = ({
     const handler = () => {
       const currentTitle = ytitle.toString();
       setTitle(currentTitle);
-      onTitleChange(currentTitle);
+      queueMicrotask(() => onTitleChange(currentTitle));
     };
     
     ytitle.observe(handler);

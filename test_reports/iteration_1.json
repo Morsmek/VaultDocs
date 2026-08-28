@@ -1,0 +1,47 @@
+{
+  "summary": "Frontend-only E2E testing of VaultDocs (Vite+React+TS, zero-knowledge local-first app) on the public preview URL via Playwright. All requested functional flows PASS: setup/create workspace, auto-created 'Welcome to VaultDocs' doc, TipTap editor typing, title edit (syncs to header + sidebar), New Document, folder create/delete, search filter, Templates modal + Meeting Notes template pre-fill, Lock/Unlock (contenteditable=false + banner), Audit log (entries: created/locked/unlocked), Comments panel open/add/close, Share/Invite modal (invite URL + QR SVG generated), Export dropdown (PDF/Markdown), document delete (active + non-active) with confirm, right-click context menu (pin/lock/delete), IndexedDB persistence across reload, mobile (390x844) hamburger sidebar toggle. No uncaught runtime errors and no prosemirror/tiptap/yjs module errors. However, a LARGE set of CSS classes used by components are missing from index.css, so several surfaces render visually broken (comments panel, templates modal, audit log, sidebar search/tags/folder rows) and the status bar is not pinned to the bottom.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CommentsPanel", "issue": "Panel renders as an unstyled block BELOW the editor (stacked in normal flow) instead of a right-side panel; textarea is a tiny default box, 'Post comment' button unstyled/looks disabled, close X floats over content and it overlaps the status bar. Root cause: .comments-panel-header/.comment-form/.comment-textarea/.comment-list/.comment-item CSS missing in index.css.", "selector": ".comments-panel", "priority": "HIGH"},
+      {"component": "TemplatesModal", "issue": "Template cards overlap each other and are left-misaligned (no grid), category pills and card icons unstyled, modal header title wraps beside the subtitle. Missing .templates-grid/.template-card/.template-categories CSS.", "selector": ".templates-grid", "priority": "HIGH"},
+      {"component": "AuditLogModal", "issue": "Timeline unstyled: avatar renders as bare text 'AL', entry text runs together as 'AlicecreatedWelcome to VaultDocs' (no spacing), no connector/badges. Missing .audit-timeline/.audit-entry/.audit-avatar CSS.", "selector": ".audit-timeline", "priority": "HIGH"},
+      {"component": "Sidebar SearchBar / tag input / FolderTree", "issue": "Search input, tag input and new-folder input render as default unstyled browser boxes; search icon overlaps the input at the container's left edge; folder row shows name+count with no spacing (e.g. 'QA Folder0'). Missing .search-input/.tag-input/.new-folder-input/.folder-item/.folder-name/.folder-doc-count CSS.", "selector": ".search-input, .tag-input, .folder-item", "priority": "MEDIUM"},
+      {"component": "FolderTree search empty state", "issue": "When at least one folder exists and a search matches nothing, no 'No results found' message is shown (the unfiled section is gated by `unfiledDocs.length > 0 || folders.length === 0`), leaving an empty sidebar with no feedback.", "selector": ".folder-tree", "priority": "MEDIUM"},
+      {"component": "App (React warning)", "issue": "Console error on every workspace mount: 'Cannot update a component (App) while rendering a different component (Editor)'. Editor's Yjs title effect calls onTitleChange (App setState) during Editor render/commit; onTitleChange (handleTitleChange) is also not memoized with useCallback, so the effect re-subscribes on every App render.", "selector": "n/a", "priority": "MEDIUM"},
+      {"component": "Testability", "issue": "Zero data-testid attributes in the entire src tree (grep count = 0). All automation had to rely on CSS classes/placeholders/text, which is fragile.", "selector": "n/a", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "WebRTC peer sync", "issue": "wss://signaling.yjs.dev fails with net::ERR_NAME_NOT_RESOLVED (DNS does not resolve from this environment) on every doc open, so collaboration/invite-join sync cannot work at all; status correctly degrades to 'Signaling offline' / Peers: 0 and the app remains usable offline. Consider a signaling URL that resolves (VITE_SIGNALING_URL is configurable).", "affected_selectors": [".status-indicator"]}
+    ],
+    "design_issues": [
+      {"screen": "Workspace (desktop 1920x1080 and mobile 390x844)", "issues": ["Status bar/footer is not pinned to the viewport bottom: .status-bar bottom = 804px with vh = 1080 -> ~275px of blank white space below the footer (varies with content length). .editor-and-comments has no CSS (needs flex:1) so the footer floats mid-page."]},
+      {"screen": "Setup screen", "issues": ["Setup card is top-aligned (top 40px, bottom 644px of 1080px viewport) rather than vertically centered, leaving a large empty area below."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Add the missing CSS for components added after the original stylesheet: .search-input, .search-bar-wrapper/.search-icon positioning, .tag-input, .new-folder-form/.new-folder-input, .folder-item/.folder-name/.folder-doc-count/.folder-children, .sidebar-tags-section, .comments-panel-header/.comment-form/.comment-textarea/.comment-list/.comment-item/.comment-actions, .templates-grid/.template-card/.template-categories, .audit-timeline/.audit-entry/.audit-avatar/.audit-icon, .export-dropdown/.export-option, .context-menu, .lock-banner, .editor-and-comments.",
+    "Make .main-content a column flex with .editor-and-comments { flex: 1; min-height: 0 } so the status bar sticks to the bottom of the viewport.",
+    "Render CommentsPanel as a right-hand side panel (the .with-comments-panel class is applied but there is no CSS backing it).",
+    "Fix the React setState-during-render warning: wrap App.handleTitleChange in useCallback and avoid calling onTitleChange from the Yjs observer synchronously during Editor render.",
+    "Show a 'No results found' empty state in FolderTree when search yields no matches even if folders exist.",
+    "Vertically center the setup card.",
+    "Add data-testid attributes to interactive elements (New Document, folder/templates buttons, search input, doc items, delete buttons, header actions, modals) for reliable automation."
+  ],
+  "critical_code_review_comments": [
+    "App.tsx is 805 lines - split setup screen, workspace header and provider/doc lifecycle hooks into separate modules.",
+    "index.css only styles a subset of the class names used by components; the newer feature components are effectively unstyled - a styling regression review is needed.",
+    "Editor.tsx effect deps [doc, onTitleChange] with a non-memoized onTitleChange causes repeated Yjs observe/unobserve on every parent render.",
+    "handleDeleteDoc calls refreshDocs(activeTeam?.teamId ?? '') - the empty-string fallback would silently list ALL documents across teams; guard on activeTeam instead.",
+    "Document lock state is persisted only locally and never synced to peers (toast admits this) - acceptable for MVP but should be documented in-app."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (no backend to test)", "frontend": "100% of functional flows passed; 7 UI/styling defects found"},
+  "seed_data_creation": "Created local-only browser data per test session: workspace 'My Vault' (user Alice), docs 'Welcome to VaultDocs'/'Untitled Document'/'Meeting Notes', folder 'QA Folder'/'TempFolder', one comment 'QA test comment'. All stored in the ephemeral browser profile's IndexedDB; nothing server-side.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "Not applicable - no auth. /app/memory/test_credentials.md does not exist (no credentials needed for this app).",
+  "context_for_next_testing_agent": "All functional flows were verified working (setup, editor, docs CRUD, folders, search, templates, lock, audit, comments, share/QR, export, delete, context menu, reload persistence, mobile sidebar). Remaining work is verifying the CSS/layout fixes. IMPORTANT Playwright note: this app uses native window.confirm for deletes; in the async API you MUST do page.on('dialog', lambda d: asyncio.ensure_future(d.accept())) - a bare lambda calling d.accept() never awaits the coroutine and the renderer freezes (produces false 'page frozen after delete' failures). No data-testid exists; use class selectors (.doc-item, .doc-item-name, .btn-delete-doc, .ProseMirror, .editor-title-input, .search-input, .comments-panel, .audit-timeline, .templates-grid, .invite-input, .export-dropdown) and placeholders ('e.g. Alice', 'e.g. Marketing Team'). Each fresh browser profile shows the Setup screen. wss://signaling.yjs.dev console errors are expected/non-blocking.",
+  "rca_of_the_issue": "The visual defects all trace back to /app/frontend/src/index.css missing rules for the class names used by the newer components (verified by grep: .search-input, .tag-input, .folder-item, .comment-textarea, .audit-timeline, .templates-grid, .template-card, .export-dropdown, .context-menu, .lock-banner, .editor-and-comments all have 0 matches). The footer gap is caused by the same missing .editor-and-comments/.main-content flex rules. The React console error comes from Editor's title observer calling the parent's setState-bearing onTitleChange while Editor renders."
+}

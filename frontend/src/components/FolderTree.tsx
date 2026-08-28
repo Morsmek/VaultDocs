@@ -155,7 +155,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
       })}
 
       {/* Unfiled documents */}
-      {(unfiledDocs.length > 0 || folders.length === 0) && (
+      {(unfiledDocs.length > 0 || folders.length === 0 || (searchQuery && filteredDocs.length === 0)) && (
         <div className="folder-section">
           {folders.length > 0 && (
             <div className="folder-section-label">
