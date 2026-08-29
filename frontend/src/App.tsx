@@ -45,6 +45,8 @@ import {
 } from './crypto/crypto';
 import { EncryptedWebrtcProvider, buildRoomName } from './sync/webrtc-provider';
 import type { ProviderStatus, PeerUser } from './sync/webrtc-provider';
+import { WorkspaceSync, recordToDoc, docToRecord } from './sync/workspace-sync';
+import type { WorkspaceDocRecord } from './sync/workspace-sync';
 
 const DEFAULT_STATUS: ProviderStatus = {
   connected: false,
@@ -86,6 +88,7 @@ function App() {
   const activeDocIdRef = useRef<string | null>(null);
   const providerRef = useRef<EncryptedWebrtcProvider | null>(null);
   const ydocRef = useRef<Y.Doc | null>(null);
+  const wsSyncRef = useRef<WorkspaceSync | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -95,6 +98,7 @@ function App() {
   const refreshDocs = async (teamId: string) => {
     const docs = await listLocalDocuments(teamId);
     setDocuments(docs);
+    wsSyncRef.current?.pushDocuments(docs);
     return docs;
   };
 
@@ -150,8 +154,10 @@ function App() {
       if (foundTeam) {
         setActiveTeam(foundTeam);
         localStorage.setItem('vaultdocs_last_team', foundTeam.teamId);
-      } else if (!inviteToken) {
-        setSetupMode('create');
+      } else {
+        // Functional update: parseHash may have set 'join' while teams were
+        // still loading — a stale inviteToken closure must not clobber it.
+        setSetupMode(prev => prev ?? 'create');
       }
     };
     loadTeams();
@@ -181,6 +187,58 @@ function App() {
     };
     load();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTeam?.teamId]);
+
+  // ─── 3b. Workspace-level sync (document list mirroring) ──────────────────
+
+  const mergeRemoteRecords = useCallback(async (teamId: string, records: WorkspaceDocRecord[]) => {
+    const localFolders = await listFolders(teamId);
+    const folderIds = new Set(localFolders.map(f => f.id));
+    let changed = false;
+
+    for (const rec of records) {
+      const local = await db.documents.get(rec.id);
+      if (rec.deleted) {
+        if (local && rec.updatedAt >= local.updatedAt) {
+          await deleteLocalDocument(rec.id);
+          changed = true;
+        }
+        continue;
+      }
+      const differs = local
+        ? rec.updatedAt > local.updatedAt ||
+          (rec.updatedAt === local.updatedAt &&
+            JSON.stringify(rec) !== JSON.stringify(docToRecord(local)))
+        : true;
+      if (!differs) continue;
+
+      const doc = recordToDoc(rec);
+      // Folders are local-only for now; drop dangling references.
+      if (doc.folderId && !folderIds.has(doc.folderId)) delete doc.folderId;
+      await saveLocalDocument(doc);
+      changed = true;
+    }
+
+    if (changed) {
+      const docs = await listLocalDocuments(teamId);
+      setDocuments(docs);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeTeam) return;
+    const team = activeTeam;
+    const sync = new WorkspaceSync(team.teamId, team.teamKey, username || 'Anonymous', (records) => {
+      void mergeRemoteRecords(team.teamId, records);
+    });
+    wsSyncRef.current = sync;
+    // Push whatever we already have so rejoining peers converge.
+    void listLocalDocuments(team.teamId).then(docs => sync.pushDocuments(docs));
+    return () => {
+      if (wsSyncRef.current === sync) wsSyncRef.current = null;
+      sync.destroy();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTeam?.teamId]);
 
@@ -299,6 +357,7 @@ function App() {
       await addAuditEntry(docId, activeTeam.teamId, 'deleted', username || 'Anonymous');
     }
     await deleteLocalDocument(docId);
+    wsSyncRef.current?.pushDelete(docId);
     const docs = await refreshDocs(activeTeam?.teamId ?? '');
     if (currentDocId === docId) {
       cleanupProvider();
@@ -313,6 +372,8 @@ function App() {
     if (!currentDocId) return;
     await db.documents.update(currentDocId, { title: newTitle, updatedAt: Date.now() });
     setDocuments(prev => prev.map(d => d.id === currentDocId ? { ...d, title: newTitle, updatedAt: Date.now() } : d));
+    const doc = await db.documents.get(currentDocId);
+    if (doc) wsSyncRef.current?.pushDocuments([doc]);
   }, [currentDocId]);
 
   // ─── 9. Folder management ───────────────────────────────────────────────
@@ -453,8 +514,10 @@ function App() {
         title: parsed.docTitle,
         encryptedState: null,
         teamId: parsed.teamId,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+        // Placeholder timestamps: the real record arrives via workspace sync
+        // and must win over this stub (never push a null-state record over it).
+        createdAt: 0,
+        updatedAt: 0
       };
       await saveLocalDocument(doc);
       const allTeams = await listLocalTeams();

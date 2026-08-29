@@ -15,9 +15,11 @@ VaultDocs is a **local-first, end-to-end encrypted** collaborative document edit
 
 ## Not fully collaborative yet
 
-These features are **local to each browser** (not synced over P2P):
+The document list itself (titles, pins, tags, lock flags, encrypted content state) syncs to all
+team members via a team-level room (`vd:{teamId}:workspace`) — new documents appear for online
+peers automatically. These features are still **local to each browser** (not synced over P2P):
 
-- Comments, audit log, folders, pins, tags, document lock
+- Comments, audit log, folders
 
 Lock only disables editing on the device that locked the doc.
 
@@ -44,7 +46,7 @@ npm run preview # serve dist/
 
 ### Networking notes
 
-- Signaling defaults to `wss://signaling.yjs.dev` (dumb relay for encrypted handshake blobs).
+- Signaling defaults to a self-hosted relay at `/signaling` on the same origin (Cloudflare Durable Object in `worker/index.ts`). It only forwards AES-GCM encrypted blobs. The old public default `wss://signaling.yjs.dev` is dead (DNS record removed).
 - STUN only is configured by default. **Many mobile / corporate networks need TURN.**
 
 Optional env (copy `.env.example` → `.env`):

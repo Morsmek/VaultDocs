@@ -40,7 +40,12 @@ function buildIceServers(): RTCIceServer[] {
 }
 
 function getSignalingUrl(): string {
-  return (import.meta.env.VITE_SIGNALING_URL as string) || 'wss://signaling.yjs.dev';
+  const fromEnv = import.meta.env.VITE_SIGNALING_URL as string | undefined;
+  if (fromEnv) return fromEnv;
+  // Default to the self-hosted relay on the same origin (Cloudflare Durable Object).
+  // The old public default wss://signaling.yjs.dev no longer exists (DNS record removed).
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${location.host}/signaling`;
 }
 
 /**
