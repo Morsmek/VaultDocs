@@ -11,6 +11,8 @@ import {
   ClipboardList,
   MessageSquare,
   MessageCircle,
+  Moon,
+  Sun,
   Menu,
   X,
   Loader2
@@ -79,6 +81,9 @@ function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    localStorage.getItem('vaultdocs_theme') === 'dark' ? 'dark' : 'light'
+  );
   
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamPassphrase, setNewTeamPassphrase] = useState('');
@@ -97,6 +102,14 @@ function App() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   }, []);
+
+  const toggleTheme = () => {
+    setTheme(current => {
+      const next = current === 'light' ? 'dark' : 'light';
+      localStorage.setItem('vaultdocs_theme', next);
+      return next;
+    });
+  };
 
   const refreshDocs = async (teamId: string) => {
     const docs = await listLocalDocuments(teamId);
@@ -607,7 +620,11 @@ function App() {
 
   if (setupMode || !activeTeam) {
     return (
-      <div className="setup-screen">
+      <div className={`setup-screen theme-${theme}`}>
+        <button className="theme-toggle setup-theme-toggle" onClick={toggleTheme} type="button" title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}>
+          {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+          <span>{theme === 'light' ? 'Dark mode' : 'Light mode'}</span>
+        </button>
         <div className="setup-card">
           <div className="setup-logo">
             <img src="/logo.png" alt="VaultDocs" style={{ height: '48px', width: 'auto' }} />
@@ -701,7 +718,7 @@ function App() {
   // ─── Main Workspace ─────────────────────────────────────────────────────
 
   return (
-    <div className="app-container">
+    <div className={`app-container theme-${theme}`}>
       {sidebarOpen && (
         <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
       )}
@@ -750,6 +767,16 @@ function App() {
             {currentDoc?.isLocked && <Lock size={13} style={{ marginLeft: '8px', color: 'var(--error-color)', verticalAlign: 'middle' }} />}
           </span>
           <div className="workspace-actions">
+            <button
+              onClick={toggleTheme}
+              className="btn-invite-outline theme-toggle"
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+              type="button"
+              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+            >
+              {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
+              <span className="btn-text">{theme === 'light' ? 'Dark' : 'Light'}</span>
+            </button>
             {currentDocId && currentDoc && (
               <>
                 <button

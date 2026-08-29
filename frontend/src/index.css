@@ -32,6 +32,25 @@
   --transition-normal: 0.25s ease;
 }
 
+/* Scoped theme tokens keep all component colors consistent in dark mode. */
+.theme-dark {
+  --bg-primary: #111827;
+  --bg-secondary: #182235;
+  --bg-tertiary: #243148;
+  --border-color: rgba(203, 213, 225, 0.14);
+  --border-focus: rgba(96, 165, 250, 0.55);
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --accent-color: #60a5fa;
+  --accent-hover: #93c5fd;
+  --accent-light: rgba(96, 165, 250, 0.16);
+  --success-color: #34d399;
+  --error-color: #f87171;
+  --warning-color: #fbbf24;
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -56,6 +75,28 @@ body {
   background-color: var(--bg-primary);
   position: relative;
 }
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setup-theme-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 5;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font: 600 12px var(--font-sans);
+  cursor: pointer;
+}
+
+.setup-theme-toggle:hover { color: var(--accent-color); border-color: var(--accent-color); }
 
 /* Sidebar Component */
 .sidebar {
