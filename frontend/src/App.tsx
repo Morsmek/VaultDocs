@@ -627,7 +627,8 @@ function App() {
         </button>
         <div className="setup-card">
           <div className="setup-logo">
-            <img src="/logo.png" alt="VaultDocs" style={{ height: '48px', width: 'auto' }} />
+            <img src="/logo.png" alt="VaultDocs" className="logo-dark" style={{ height: '48px', width: 'auto' }} />
+            <img src="/logo-light.png" alt="VaultDocs" className="logo-light" style={{ height: '48px', width: 'auto' }} />
           </div>
           <h2 className="setup-title">VaultDocs Setup</h2>
           <p className="setup-description">

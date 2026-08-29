@@ -78,7 +78,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className="sidebar">
       {/* Logo header */}
       <div className="sidebar-header">
-        <img src="/logo.png" alt="VaultDocs" className="logo-image" />
+        <img src="/logo.png" alt="VaultDocs" className="logo-image logo-dark" />
+        <img src="/logo-light.png" alt="VaultDocs" className="logo-image logo-light" />
         <div style={{ flex: 1 }} />
         <button
           onClick={onLeaveTeam}
