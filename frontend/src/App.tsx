@@ -10,6 +10,7 @@ import {
   Unlock,
   ClipboardList,
   MessageSquare,
+  MessageCircle,
   Menu,
   X,
   Loader2
@@ -18,6 +19,7 @@ import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
 import { InviteModal } from './components/InviteModal';
 import { CommentsPanel } from './components/CommentsPanel';
+import { ChatPanel } from './components/ChatPanel';
 import { AuditLogModal } from './components/AuditLogModal';
 import { TemplatesModal } from './components/TemplatesModal';
 import { ExportMenu } from './components/ExportMenu';
@@ -71,6 +73,7 @@ function App() {
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [isAuditOpen, setIsAuditOpen] = useState(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -271,6 +274,7 @@ function App() {
     cleanupProvider();
     setCurrentDocId(docId);
     setIsCommentsOpen(false);
+    setIsChatOpen(false);
     setIsAuditOpen(false);
 
     const ydoc = new Y.Doc();
@@ -353,12 +357,12 @@ function App() {
   // ─── 7. Delete doc ──────────────────────────────────────────────────────
 
   const handleDeleteDoc = async (docId: string) => {
-    if (activeTeam) {
-      await addAuditEntry(docId, activeTeam.teamId, 'deleted', username || 'Anonymous');
-    }
+    if (!activeTeam) return;
+
+    await addAuditEntry(docId, activeTeam.teamId, 'deleted', username || 'Anonymous');
     await deleteLocalDocument(docId);
     wsSyncRef.current?.pushDelete(docId);
-    const docs = await refreshDocs(activeTeam?.teamId ?? '');
+    const docs = await refreshDocs(activeTeam.teamId);
     if (currentDocId === docId) {
       cleanupProvider();
       setCurrentDocId(null);
@@ -730,7 +734,7 @@ function App() {
         />
       </div>
 
-      <main className={`main-content ${isCommentsOpen ? 'with-comments-panel' : ''}`}>
+      <main className={`main-content ${isCommentsOpen ? 'with-comments-panel' : ''} ${isChatOpen ? 'with-chat-panel' : ''}`}>
         <header className="workspace-header">
           <button 
             className="mobile-menu-btn" 
@@ -767,13 +771,22 @@ function App() {
                   <span className="btn-text">Audit</span>
                 </button>
                 <button
-                  onClick={() => setIsCommentsOpen(v => !v)}
+                  onClick={() => { setIsCommentsOpen(v => !v); setIsChatOpen(false); }}
                   className={`btn-invite-outline ${isCommentsOpen ? 'active' : ''}`}
                   title="Toggle comments"
                   type="button"
                 >
                   <MessageSquare size={14} />
                   <span className="btn-text">Comments</span>
+                </button>
+                <button
+                  onClick={() => { setIsChatOpen(v => !v); setIsCommentsOpen(false); }}
+                  className={`btn-invite-outline ${isChatOpen ? 'active' : ''}`}
+                  title="Toggle document chat"
+                  type="button"
+                >
+                  <MessageCircle size={14} />
+                  <span className="btn-text">Chat</span>
                 </button>
                 <ExportMenu docTitle={currentDoc.title} />
                 <button onClick={() => setIsInviteOpen(true)} className="btn-invite-outline" type="button">
@@ -810,6 +823,13 @@ function App() {
               username={username}
               onClose={() => setIsCommentsOpen(false)}
               onCommentAdded={handleCommentAdded}
+            />
+          )}
+          {isChatOpen && currentYDoc && (
+            <ChatPanel
+              doc={currentYDoc}
+              username={username}
+              onClose={() => setIsChatOpen(false)}
             />
           )}
         </div>

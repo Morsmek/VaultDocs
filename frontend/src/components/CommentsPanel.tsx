@@ -31,13 +31,17 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
     loadComments();
   }, [loadComments]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitComment = async () => {
     if (!newComment.trim()) return;
     await saveComment(docId, teamId, username, newComment.trim());
     setNewComment('');
     await loadComments();
     onCommentAdded?.();
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void submitComment();
   };
 
   const handleResolve = async (commentId: string) => {
@@ -89,7 +93,10 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
           onChange={(e) => setNewComment(e.target.value)}
           rows={3}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit(e as any);
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              void submitComment();
+            }
           }}
         />
         <button type="submit" className="comment-submit-btn" disabled={!newComment.trim()}>

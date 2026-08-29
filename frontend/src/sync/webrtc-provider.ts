@@ -174,7 +174,7 @@ export class EncryptedWebrtcProvider {
     
     try {
       this.ws = new WebSocket(getSignalingUrl());
-    } catch (e) {
+    } catch {
       this.lastError = 'Failed to open signaling WebSocket';
       this.emitStatus();
       this.scheduleReconnect();

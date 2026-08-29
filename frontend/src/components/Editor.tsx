@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import * as Y from 'yjs';
+import type { EncryptedWebrtcProvider } from '../sync/webrtc-provider';
 import { 
   Bold, 
   Italic, 
@@ -17,7 +18,7 @@ import {
 
 interface EditorProps {
   doc: Y.Doc;
-  provider: any; // EncryptedWebrtcProvider
+  provider: EncryptedWebrtcProvider;
   username: string;
   onTitleChange: (newTitle: string) => void;
   isLocked?: boolean;
